@@ -1,0 +1,38 @@
+<?xml version="1.0" encoding="utf-8"?>
+<resources>
+    <string name="app_name">WatchTogether</string>
+
+    <!-- Discovery Screen -->
+    <string name="host_session">Host Session</string>
+    <string name="scan_devices">Scan Devices</string>
+    <string name="disconnect">Disconnect</string>
+    <string name="nearby_devices">Nearby Devices</string>
+    <string name="no_devices_found">No devices found</string>
+    <string name="tap_scan_hint">Tap \"Scan Devices\" to discover nearby devices.\nMake sure Wi-Fi is enabled on both devices.</string>
+
+    <!-- Connection Status -->
+    <string name="status_disconnected">Not connected</string>
+    <string name="status_connecting">Connecting to %s…</string>
+    <string name="status_hosting">Hosting session</string>
+    <string name="status_connected">Connected</string>
+
+    <!-- Video Library -->
+    <string name="video_library">Video Library</string>
+    <string name="all_videos">All</string>
+    <string name="recent">Recent</string>
+    <string name="no_videos_found">No videos found</string>
+
+    <!-- Player -->
+    <string name="role_host">Host</string>
+    <string name="role_viewer">Viewer</string>
+    <string name="waiting_for_viewers">Waiting for viewers…</string>
+    <string name="connecting_to_host">Connecting to host…</string>
+    <string name="connected_to_host">Connected to host</string>
+    <string name="viewers_connected">%d viewer(s) connected</string>
+    <string name="playback_error">Playback error: %s</string>
+    <string name="back">Back</string>
+
+    <!-- Notifications -->
+    <string name="streaming_notification_title">WatchTogether</string>
+    <string name="streaming_notification_text">Streaming video to connected devices</string>
+</resources>
