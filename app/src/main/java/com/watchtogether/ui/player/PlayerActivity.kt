@@ -272,7 +272,7 @@ class PlayerActivity : AppCompatActivity() {
             broadcastSync(SyncMessage.Pause(position))
         }
         player?.pause()
-        isSyncing = false
+        binding.playerView.handler?.post { isSyncing = false }
     }
 
     override fun onDestroy() {
