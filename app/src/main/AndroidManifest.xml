@@ -66,16 +66,5 @@
             android:exported="false"
             android:foregroundServiceType="connectedDevice" />
 
-        <receiver
-            android:name=".network.wifidirect.WifiDirectBroadcastReceiver"
-            android:exported="false">
-            <intent-filter>
-                <action android:name="android.net.wifi.p2p.STATE_CHANGED" />
-                <action android:name="android.net.wifi.p2p.PEERS_CHANGED" />
-                <action android:name="android.net.wifi.p2p.CONNECTION_CHANGED" />
-                <action android:name="android.net.wifi.p2p.THIS_DEVICE_CHANGED" />
-            </intent-filter>
-        </receiver>
-
     </application>
 </manifest>

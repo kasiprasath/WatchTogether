@@ -4,23 +4,43 @@
     android:height="108dp"
     android:viewportWidth="108"
     android:viewportHeight="108">
-    <group android:scaleX="0.5"
-        android:scaleY="0.5"
-        android:translateX="27"
-        android:translateY="27">
-        <!-- Play button circle -->
+    <group
+        android:scaleX="0.55"
+        android:scaleY="0.55"
+        android:translateX="24.3"
+        android:translateY="24.3">
+        <!-- Rounded screen/display shape -->
         <path
             android:fillColor="#FFFFFF"
-            android:pathData="M54,10C29.7,10 10,29.7 10,54s19.7,44 44,44s44,-19.7 44,-44S78.3,10 54,10zM44,74V34l30,20L44,74z"/>
-        <!-- Wi-Fi arc 1 -->
+            android:pathData="M20,28C20,22.48 24.48,18 30,18h48c5.52,0 10,4.48 10,10v40c0,5.52 -4.48,10 -10,10H30c-5.52,0 -10,-4.48 -10,-10V28z"
+            android:fillAlpha="0.95"/>
+        <!-- Play triangle centered in screen -->
+        <path
+            android:fillColor="#00897B"
+            android:pathData="M46,34v28l22,-14z"/>
+        <!-- Left person silhouette -->
         <path
             android:fillColor="#FFFFFF"
-            android:pathData="M54,0C35.1,0 18.1,8.4 6.8,21.5l7.1,7.1C23.8,17 37.9,10 54,10s30.2,7 40.1,18.6l7.1,-7.1C89.9,8.4 72.9,0 54,0z"
-            android:fillAlpha="0.3"/>
-        <!-- Wi-Fi arc 2 -->
+            android:pathData="M36,86c0,-4.42 3.58,-8 8,-8s8,3.58 8,8"
+            android:fillAlpha="0.9"/>
         <path
             android:fillColor="#FFFFFF"
-            android:pathData="M54,20c-13.3,0 -25.2,5.9 -33.3,15.2l7.1,7.1C34.2,34.6 43.5,30 54,30s19.8,4.6 26.2,12.3l7.1,-7.1C79.2,25.9 67.3,20 54,20z"
-            android:fillAlpha="0.5"/>
+            android:pathData="M44,73a5,5 0,1 0,0 0.01"
+            android:fillAlpha="0.9"/>
+        <!-- Right person silhouette -->
+        <path
+            android:fillColor="#FFFFFF"
+            android:pathData="M56,86c0,-4.42 3.58,-8 8,-8s8,3.58 8,8"
+            android:fillAlpha="0.9"/>
+        <path
+            android:fillColor="#FFFFFF"
+            android:pathData="M64,73a5,5 0,1 0,0 0.01"
+            android:fillAlpha="0.9"/>
+        <!-- Connection line between people -->
+        <path
+            android:strokeColor="#FFFFFF"
+            android:strokeWidth="2"
+            android:pathData="M49,76h10"
+            android:strokeAlpha="0.7"/>
     </group>
 </vector>

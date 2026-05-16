@@ -24,6 +24,7 @@ class VideoLibraryActivity : AppCompatActivity() {
 
     private var isHost: Boolean = false
     private var hostAddress: String? = null
+    private var currentFolders: List<String> = emptyList()
 
     override fun onCreate(savedInstanceState: Bundle?) {
         super.onCreate(savedInstanceState)
@@ -86,15 +87,18 @@ class VideoLibraryActivity : AppCompatActivity() {
 
         videoAdapter.submitList(state.videos)
 
-        // Update folder chips
-        binding.chipGroupFolders.removeViews(2, binding.chipGroupFolders.childCount - 2)
-        state.folders.forEach { folder ->
-            val chip = com.google.android.material.chip.Chip(this).apply {
-                text = folder
-                isCheckable = true
-                setOnClickListener { viewModel.filterByFolder(folder) }
+        // Update folder chips only when folders change
+        if (state.folders != currentFolders) {
+            currentFolders = state.folders
+            binding.chipGroupFolders.removeViews(2, binding.chipGroupFolders.childCount - 2)
+            state.folders.forEach { folder ->
+                val chip = com.google.android.material.chip.Chip(this).apply {
+                    text = folder
+                    isCheckable = true
+                    setOnClickListener { viewModel.filterByFolder(folder) }
+                }
+                binding.chipGroupFolders.addView(chip)
             }
-            binding.chipGroupFolders.addView(chip)
         }
     }
 
