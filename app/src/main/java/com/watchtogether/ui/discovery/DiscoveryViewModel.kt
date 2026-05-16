@@ -4,6 +4,8 @@ import android.app.Application
 import androidx.lifecycle.AndroidViewModel
 import androidx.lifecycle.viewModelScope
 import com.watchtogether.data.model.DeviceInfo
+import com.watchtogether.data.repository.ConnectionHistoryEntry
+import com.watchtogether.data.repository.ConnectionHistoryManager
 import com.watchtogether.network.wifidirect.WifiDirectManager
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.StateFlow
@@ -13,12 +15,14 @@ import kotlinx.coroutines.launch
 class DiscoveryViewModel(application: Application) : AndroidViewModel(application) {
 
     val wifiDirectManager = WifiDirectManager(application)
+    val historyManager = ConnectionHistoryManager(application)
 
     private val _uiState = MutableStateFlow(DiscoveryUiState())
     val uiState: StateFlow<DiscoveryUiState> = _uiState.asStateFlow()
 
     init {
         wifiDirectManager.initialize()
+        loadHistory()
 
         viewModelScope.launch {
             wifiDirectManager.peers.collect { peers ->
@@ -32,6 +36,11 @@ class DiscoveryViewModel(application: Application) : AndroidViewModel(applicatio
         viewModelScope.launch {
             wifiDirectManager.connectionState.collect { state ->
                 _uiState.value = _uiState.value.copy(connectionState = state)
+                if (state is WifiDirectManager.ConnectionState.ConnectedAsHost ||
+                    state is WifiDirectManager.ConnectionState.ConnectedAsClient
+                ) {
+                    saveCurrentConnection(state)
+                }
             }
         }
 
@@ -64,6 +73,36 @@ class DiscoveryViewModel(application: Application) : AndroidViewModel(applicatio
         wifiDirectManager.disconnect()
     }
 
+    fun removeHistoryEntry(deviceAddress: String) {
+        historyManager.removeEntry(deviceAddress)
+        loadHistory()
+    }
+
+    fun loadHistory() {
+        _uiState.value = _uiState.value.copy(
+            connectionHistory = historyManager.getEntries()
+        )
+    }
+
+    private fun saveCurrentConnection(state: WifiDirectManager.ConnectionState) {
+        val peers = _uiState.value.devices
+        when (state) {
+            is WifiDirectManager.ConnectionState.ConnectedAsHost -> {
+                peers.firstOrNull { it.isConnected }?.let { device ->
+                    historyManager.addEntry(device.name, device.address)
+                    loadHistory()
+                }
+            }
+            is WifiDirectManager.ConnectionState.ConnectedAsClient -> {
+                peers.firstOrNull { it.isConnected }?.let { device ->
+                    historyManager.addEntry(device.name, device.address)
+                    loadHistory()
+                }
+            }
+            else -> {}
+        }
+    }
+
     override fun onCleared() {
         super.onCleared()
         wifiDirectManager.cleanup()
@@ -74,6 +113,7 @@ class DiscoveryViewModel(application: Application) : AndroidViewModel(applicatio
         val connectionState: WifiDirectManager.ConnectionState = WifiDirectManager.ConnectionState.Disconnected,
         val isDiscovering: Boolean = false,
         val isEmpty: Boolean = true,
-        val thisDevice: DeviceInfo? = null
+        val thisDevice: DeviceInfo? = null,
+        val connectionHistory: List<ConnectionHistoryEntry> = emptyList()
     )
 }

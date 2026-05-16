@@ -25,6 +25,7 @@ class DiscoveryActivity : AppCompatActivity() {
     private lateinit var binding: ActivityDiscoveryBinding
     private val viewModel: DiscoveryViewModel by viewModels()
     private lateinit var deviceAdapter: DeviceAdapter
+    private lateinit var historyAdapter: HistoryAdapter
     private var hasNavigated = false
 
     private val permissionLauncher = registerForActivityResult(
@@ -54,6 +55,25 @@ class DiscoveryActivity : AppCompatActivity() {
         binding.recyclerDevices.apply {
             layoutManager = LinearLayoutManager(this@DiscoveryActivity)
             adapter = deviceAdapter
+        }
+
+        historyAdapter = HistoryAdapter(
+            onItemClick = { entry ->
+                val device = DeviceInfo(
+                    name = entry.deviceName,
+                    address = entry.deviceAddress,
+                    status = 3 // WifiP2pDevice.AVAILABLE
+                )
+                viewModel.connectToDevice(device)
+            },
+            onRemoveClick = { entry ->
+                viewModel.removeHistoryEntry(entry.deviceAddress)
+            }
+        )
+
+        binding.recyclerHistory.apply {
+            layoutManager = LinearLayoutManager(this@DiscoveryActivity)
+            adapter = historyAdapter
         }
 
         binding.btnScan.setOnClickListener {
@@ -153,6 +173,14 @@ class DiscoveryActivity : AppCompatActivity() {
         state.thisDevice?.let {
             binding.deviceName.text = it.name
         }
+
+        // Connection history
+        if (state.connectionHistory.isNotEmpty()) {
+            binding.historySection.visibility = View.VISIBLE
+            historyAdapter.submitList(state.connectionHistory)
+        } else {
+            binding.historySection.visibility = View.GONE
+        }
     }
 
     private fun onDeviceClicked(device: DeviceInfo) {
@@ -194,6 +222,7 @@ class DiscoveryActivity : AppCompatActivity() {
     override fun onResume() {
         super.onResume()
         viewModel.wifiDirectManager.registerReceiver()
+        viewModel.loadHistory()
     }
 
     override fun onPause() {

@@ -9,6 +9,8 @@
     <string name="nearby_devices">Nearby Devices</string>
     <string name="no_devices_found">No devices found</string>
     <string name="tap_scan_hint">Tap \"Scan Devices\" to discover nearby devices.\nMake sure Wi-Fi is enabled on both devices.</string>
+    <string name="connection_history">Connection History</string>
+    <string name="remove_from_history">Remove from history</string>
 
     <!-- Connection Status -->
     <string name="status_disconnected">Not connected</string>
