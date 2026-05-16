@@ -268,9 +268,11 @@ class PlayerActivity : AppCompatActivity() {
         super.onStop()
         if (isHost) {
             val position = player?.currentPosition ?: 0L
+            isSyncing = true
             broadcastSync(SyncMessage.Pause(position))
         }
         player?.pause()
+        isSyncing = false
     }
 
     override fun onDestroy() {

@@ -19,6 +19,7 @@ class DiscoveryViewModel(application: Application) : AndroidViewModel(applicatio
 
     private val _uiState = MutableStateFlow(DiscoveryUiState())
     val uiState: StateFlow<DiscoveryUiState> = _uiState.asStateFlow()
+    private var pendingConnectionDevice: DeviceInfo? = null
 
     init {
         wifiDirectManager.initialize()
@@ -66,6 +67,7 @@ class DiscoveryViewModel(application: Application) : AndroidViewModel(applicatio
     }
 
     fun connectToDevice(device: DeviceInfo) {
+        pendingConnectionDevice = device
         wifiDirectManager.connectToDevice(device)
     }
 
@@ -85,21 +87,16 @@ class DiscoveryViewModel(application: Application) : AndroidViewModel(applicatio
     }
 
     private fun saveCurrentConnection(state: WifiDirectManager.ConnectionState) {
-        val peers = _uiState.value.devices
-        when (state) {
-            is WifiDirectManager.ConnectionState.ConnectedAsHost -> {
-                peers.firstOrNull { it.isConnected }?.let { device ->
+        pendingConnectionDevice?.let { device ->
+            when (state) {
+                is WifiDirectManager.ConnectionState.ConnectedAsHost,
+                is WifiDirectManager.ConnectionState.ConnectedAsClient -> {
                     historyManager.addEntry(device.name, device.address)
                     loadHistory()
+                    pendingConnectionDevice = null
                 }
+                else -> {}
             }
-            is WifiDirectManager.ConnectionState.ConnectedAsClient -> {
-                peers.firstOrNull { it.isConnected }?.let { device ->
-                    historyManager.addEntry(device.name, device.address)
-                    loadHistory()
-                }
-            }
-            else -> {}
         }
     }
 
