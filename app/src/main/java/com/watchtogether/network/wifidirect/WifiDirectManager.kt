@@ -127,6 +127,17 @@ class WifiDirectManager(private val context: Context) {
     }
 
     fun disconnect() {
+        // Cancel any pending invitation first
+        manager?.cancelConnect(channel, object : WifiP2pManager.ActionListener {
+            override fun onSuccess() {
+                Log.d(TAG, "Pending connect cancelled")
+            }
+            override fun onFailure(reason: Int) {
+                Log.w(TAG, "Cancel connect failed (may not have been connecting): ${getFailureReason(reason)}")
+            }
+        })
+
+        // Remove the Wi-Fi Direct group
         manager?.removeGroup(channel, object : WifiP2pManager.ActionListener {
             override fun onSuccess() {
                 _connectionState.value = ConnectionState.Disconnected
@@ -135,7 +146,8 @@ class WifiDirectManager(private val context: Context) {
             }
 
             override fun onFailure(reason: Int) {
-                Log.w(TAG, "Disconnect failed: ${getFailureReason(reason)}")
+                Log.w(TAG, "Remove group failed: ${getFailureReason(reason)}")
+                // Still reset state so UI isn't stuck
                 _connectionState.value = ConnectionState.Disconnected
                 _connectionInfo.value = null
             }

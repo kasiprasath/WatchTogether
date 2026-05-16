@@ -22,6 +22,9 @@ data class DeviceInfo(
     val isAvailable: Boolean
         get() = status == WifiP2pDevice.AVAILABLE
 
+    val isInvited: Boolean
+        get() = status == WifiP2pDevice.INVITED
+
     val isConnected: Boolean
         get() = status == WifiP2pDevice.CONNECTED
 
