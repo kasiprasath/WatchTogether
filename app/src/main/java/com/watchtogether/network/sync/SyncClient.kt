@@ -14,13 +14,11 @@ import kotlinx.coroutines.flow.asSharedFlow
 import kotlinx.coroutines.flow.asStateFlow
 import kotlinx.coroutines.launch
 import java.io.InputStream
-import java.io.PrintWriter
 import java.net.Socket
 
 class SyncClient {
 
     private var socket: Socket? = null
-    private var writer: PrintWriter? = null
     private var readerJob: Job? = null
     private var reconnectJob: Job? = null
     private val scope = CoroutineScope(Dispatchers.IO)
@@ -245,13 +243,11 @@ class SyncClient {
         try {
             readerJob?.cancel()
             reconnectJob?.cancel()
-            writer?.close()
             socket?.close()
         } catch (e: Exception) {
             Log.w(TAG, "Cleanup error", e)
         }
         socket = null
-        writer = null
     }
 
     companion object {

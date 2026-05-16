@@ -10,12 +10,9 @@ import android.net.wifi.p2p.WifiP2pManager
 import android.os.Looper
 import android.util.Log
 import com.watchtogether.data.model.DeviceInfo
-import kotlinx.coroutines.channels.awaitClose
-import kotlinx.coroutines.flow.Flow
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.StateFlow
 import kotlinx.coroutines.flow.asStateFlow
-import kotlinx.coroutines.flow.callbackFlow
 
 class WifiDirectManager(private val context: Context) {
 
