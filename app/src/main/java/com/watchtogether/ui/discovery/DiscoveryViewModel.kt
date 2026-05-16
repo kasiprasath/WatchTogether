@@ -49,7 +49,6 @@ class DiscoveryViewModel(application: Application) : AndroidViewModel(applicatio
     }
 
     fun startDiscovery() {
-        wifiDirectManager.registerReceiver()
         wifiDirectManager.discoverPeers()
     }
 

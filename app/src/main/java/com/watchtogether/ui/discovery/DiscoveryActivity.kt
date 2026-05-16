@@ -25,6 +25,7 @@ class DiscoveryActivity : AppCompatActivity() {
     private lateinit var binding: ActivityDiscoveryBinding
     private val viewModel: DiscoveryViewModel by viewModels()
     private lateinit var deviceAdapter: DeviceAdapter
+    private var hasNavigated = false
 
     private val permissionLauncher = registerForActivityResult(
         ActivityResultContracts.RequestMultiplePermissions()
@@ -95,6 +96,7 @@ class DiscoveryActivity : AppCompatActivity() {
                 binding.btnHost.visibility = View.VISIBLE
                 binding.btnScan.visibility = View.VISIBLE
                 binding.progressConnecting.visibility = View.GONE
+                hasNavigated = false
             }
             is WifiDirectManager.ConnectionState.Connecting -> {
                 binding.connectionStatus.text = getString(R.string.status_connecting, state.connectionState.deviceName)
@@ -111,7 +113,10 @@ class DiscoveryActivity : AppCompatActivity() {
                 binding.btnHost.visibility = View.GONE
                 binding.btnScan.visibility = View.GONE
                 binding.progressConnecting.visibility = View.GONE
-                navigateToLibrary(isHost = true, hostAddress = state.connectionState.address)
+                if (!hasNavigated) {
+                    hasNavigated = true
+                    navigateToLibrary(isHost = true, hostAddress = state.connectionState.address)
+                }
             }
             is WifiDirectManager.ConnectionState.ConnectedAsClient -> {
                 binding.connectionStatus.text = getString(R.string.status_connected)
@@ -120,7 +125,10 @@ class DiscoveryActivity : AppCompatActivity() {
                 binding.btnHost.visibility = View.GONE
                 binding.btnScan.visibility = View.GONE
                 binding.progressConnecting.visibility = View.GONE
-                navigateToPlayer(isHost = false, hostAddress = state.connectionState.hostAddress)
+                if (!hasNavigated) {
+                    hasNavigated = true
+                    navigateToPlayer(isHost = false, hostAddress = state.connectionState.hostAddress)
+                }
             }
             is WifiDirectManager.ConnectionState.Error -> {
                 binding.connectionStatus.text = state.connectionState.message

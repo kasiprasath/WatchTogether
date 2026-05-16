@@ -13,18 +13,14 @@ import kotlinx.coroutines.flow.StateFlow
 import kotlinx.coroutines.flow.asSharedFlow
 import kotlinx.coroutines.flow.asStateFlow
 import kotlinx.coroutines.launch
-import java.io.BufferedReader
-import java.io.InputStreamReader
+import java.io.InputStream
 import java.io.PrintWriter
-import java.net.HttpURLConnection
 import java.net.Socket
-import java.net.URI
 
 class SyncClient {
 
     private var socket: Socket? = null
     private var writer: PrintWriter? = null
-    private var reader: BufferedReader? = null
     private var readerJob: Job? = null
     private var reconnectJob: Job? = null
     private val scope = CoroutineScope(Dispatchers.IO)
@@ -50,7 +46,6 @@ class SyncClient {
         readerJob?.cancel()
         readerJob = scope.launch {
             try {
-                val wsUri = URI("ws://$hostAddress:$port")
                 val tcpSocket = Socket(hostAddress, port)
                 socket = tcpSocket
 
@@ -71,12 +66,9 @@ class SyncClient {
                 outputStream.write(handshake.toByteArray())
                 outputStream.flush()
 
-                val br = BufferedReader(InputStreamReader(inputStream))
-                // Read handshake response
-                var line = br.readLine()
-                while (line != null && line.isNotEmpty()) {
-                    line = br.readLine()
-                }
+                // Read handshake response byte-by-byte to avoid BufferedReader
+                // consuming WebSocket frame data into its internal buffer
+                readHttpResponseHeaders(inputStream)
 
                 _isConnected.value = true
                 Log.d(TAG, "Connected to sync server at $hostAddress:$port")
@@ -110,7 +102,22 @@ class SyncClient {
         }
     }
 
-    private fun readWebSocketFrame(input: java.io.InputStream): String? {
+    private fun readHttpResponseHeaders(input: InputStream) {
+        var state = 0 // Looking for \r\n\r\n sequence
+        while (true) {
+            val b = input.read()
+            if (b == -1) return
+            val c = b.toChar()
+            state = when {
+                c == '\r' && (state == 0 || state == 2) -> state + 1
+                c == '\n' && state == 1 -> 2
+                c == '\n' && state == 3 -> return // Found \r\n\r\n
+                else -> 0
+            }
+        }
+    }
+
+    private fun readWebSocketFrame(input: InputStream): String? {
         val firstByte = input.read()
         if (firstByte == -1) return null
 
@@ -239,14 +246,12 @@ class SyncClient {
             readerJob?.cancel()
             reconnectJob?.cancel()
             writer?.close()
-            reader?.close()
             socket?.close()
         } catch (e: Exception) {
             Log.w(TAG, "Cleanup error", e)
         }
         socket = null
         writer = null
-        reader = null
     }
 
     companion object {
