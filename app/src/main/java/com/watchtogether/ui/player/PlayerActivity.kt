@@ -247,11 +247,17 @@ class PlayerActivity : AppCompatActivity() {
                             hostAddress ?: return@runOnUiThread,
                             VideoStreamServer.DEFAULT_PORT
                         )
-                        binding.errorText.visibility = View.GONE
-                        val mediaItem = MediaItem.fromUri(streamUrl)
-                        player?.setMediaItem(mediaItem)
-                        player?.prepare()
-                        player?.playWhenReady = true
+                        val currentUri = player?.currentMediaItem?.localConfiguration?.uri?.toString()
+                        val alreadyPlaying = currentUri == streamUrl &&
+                                player?.playbackState != Player.STATE_IDLE &&
+                                player?.playerError == null
+                        if (!alreadyPlaying) {
+                            binding.errorText.visibility = View.GONE
+                            val mediaItem = MediaItem.fromUri(streamUrl)
+                            player?.setMediaItem(mediaItem)
+                            player?.prepare()
+                            player?.playWhenReady = true
+                        }
                         binding.videoTitle.text = message.videoTitle
                     }
                 }
