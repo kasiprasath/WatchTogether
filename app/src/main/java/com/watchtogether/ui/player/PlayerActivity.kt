@@ -181,6 +181,14 @@ class PlayerActivity : AppCompatActivity() {
                         getString(R.string.waiting_for_viewers)
                     }
                 }
+                // When a new client connects, re-send VideoSelected so the
+                // viewer knows which video to stream (it may have joined
+                // after the initial broadcast).
+                if (connected && videoPath != null) {
+                    streamingService?.broadcastSyncMessage(
+                        SyncMessage.VideoSelected(videoPath!!, videoTitle ?: "Unknown")
+                    )
+                }
             }
         }
     }
@@ -209,10 +217,10 @@ class PlayerActivity : AppCompatActivity() {
             }
         }
 
-        val streamUrl = NetworkUtils.buildStreamUrl(address, VideoStreamServer.DEFAULT_PORT)
-        val mediaItem = MediaItem.fromUri(streamUrl)
-        player?.setMediaItem(mediaItem)
-        player?.prepare()
+        // Do NOT start playback here — wait for the VideoSelected sync
+        // message from the host, which arrives after the host's streaming
+        // service has set the video path on the HTTP server.
+        binding.bufferingIndicator.visibility = View.VISIBLE
     }
 
     private fun handleSyncMessage(message: SyncMessage) {
@@ -239,10 +247,11 @@ class PlayerActivity : AppCompatActivity() {
                             hostAddress ?: return@runOnUiThread,
                             VideoStreamServer.DEFAULT_PORT
                         )
+                        binding.errorText.visibility = View.GONE
                         val mediaItem = MediaItem.fromUri(streamUrl)
                         player?.setMediaItem(mediaItem)
                         player?.prepare()
-                        player?.play()
+                        player?.playWhenReady = true
                         binding.videoTitle.text = message.videoTitle
                     }
                 }
