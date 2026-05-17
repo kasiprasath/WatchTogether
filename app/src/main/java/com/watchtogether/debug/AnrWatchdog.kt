@@ -30,13 +30,6 @@ class AnrWatchdog(private val fileLogger: FileLogger) {
                         .joinToString("\n    at ") { it.toString() }
                     val message = "ANR detected! Main thread blocked for >${CHECK_INTERVAL_MS}ms\n    at $stackTrace"
                     AppLogger.e(LogTag.ANR, message)
-                    fileLogger.log(
-                        LogEntry(
-                            level = LogEntry.Level.ERROR,
-                            tag = LogTag.ANR,
-                            message = message
-                        )
-                    )
                 }
             }
         }, "AnrWatchdog").apply {

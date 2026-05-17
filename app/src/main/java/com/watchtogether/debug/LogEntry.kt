@@ -27,7 +27,7 @@ data class LogEntry(
     }
 
     companion object {
-        private val DATE_FORMAT = SimpleDateFormat("yyyy-MM-dd HH:mm:ss.SSS", Locale.US)
+        private val DATE_FORMAT get() = SimpleDateFormat("yyyy-MM-dd HH:mm:ss.SSS", Locale.US)
     }
 }
 
