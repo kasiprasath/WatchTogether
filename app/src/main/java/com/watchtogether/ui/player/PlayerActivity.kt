@@ -213,8 +213,15 @@ class PlayerActivity : AppCompatActivity() {
 
                         override fun onIsPlayingChanged(isPlaying: Boolean) {
                             val action = if (isPlaying) "play" else "pause"
-                            AppLogger.d(LogTag.PLAYER_SYNC, "isPlaying=$isPlaying, isSyncing=$isSyncing, isHost=$isHost")
+                            AppLogger.d(LogTag.PLAYER_SYNC, "isPlaying=$isPlaying, playWhenReady=${exoPlayer.playWhenReady}, isSyncing=$isSyncing, isHost=$isHost")
                             if (isSyncing) return
+                            // Only broadcast when isPlaying matches user intent (playWhenReady).
+                            // Buffering causes isPlaying=false while playWhenReady stays true;
+                            // broadcasting Pause in that case would pause all other devices.
+                            if (isPlaying != exoPlayer.playWhenReady) {
+                                AppLogger.d(LogTag.PLAYER_SYNC, "Skipped broadcast: buffering state change")
+                                return
+                            }
                             if (isSyncEcho(action)) {
                                 AppLogger.d(LogTag.PLAYER_SYNC, "Suppressed echo: $action")
                                 return
