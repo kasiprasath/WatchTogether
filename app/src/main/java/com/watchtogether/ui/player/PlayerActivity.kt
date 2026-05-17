@@ -23,12 +23,12 @@ import com.watchtogether.databinding.ActivityPlayerBinding
 import com.watchtogether.debug.AppLogger
 import com.watchtogether.debug.DebugConfig
 import com.watchtogether.debug.LogTag
+import com.watchtogether.network.server.StreamProxy
 import com.watchtogether.network.server.VideoStreamServer
 import com.watchtogether.network.sync.SyncClient
 import com.watchtogether.network.sync.SyncServer
 import com.watchtogether.service.StreamingService
 import com.watchtogether.ui.discovery.DiscoveryActivity
-import com.watchtogether.util.NetworkUtils
 import kotlinx.coroutines.flow.collectLatest
 import kotlinx.coroutines.launch
 import java.io.File
@@ -46,12 +46,15 @@ class PlayerActivity : AppCompatActivity() {
 
     private var streamingService: StreamingService? = null
     private var syncClient: SyncClient? = null
+    private var streamProxy: StreamProxy? = null
+    private var proxyPort: Int = 0
     private var isBound = false
     private var isSyncing = false
     private val mainHandler = Handler(Looper.getMainLooper())
 
     // Flow breakage detection
     private var videoSelectedReceived = false
+    private var playerRetryCount = 0
 
     private val serviceConnection = object : ServiceConnection {
         override fun onServiceConnected(name: ComponentName?, service: IBinder?) {
@@ -205,13 +208,23 @@ class PlayerActivity : AppCompatActivity() {
                         override fun onIsPlayingChanged(isPlaying: Boolean) {
                             AppLogger.d(LogTag.PLAYER_SYNC, "isPlaying=$isPlaying, isSyncing=$isSyncing, isHost=$isHost")
                             if (isSyncing) return
-                            if (isHost) {
-                                val position = exoPlayer.currentPosition
-                                if (isPlaying) {
-                                    broadcastSync(SyncMessage.Play(position))
-                                } else {
-                                    broadcastSync(SyncMessage.Pause(position))
-                                }
+                            val position = exoPlayer.currentPosition
+                            if (isPlaying) {
+                                broadcastSync(SyncMessage.Play(position))
+                            } else {
+                                broadcastSync(SyncMessage.Pause(position))
+                            }
+                        }
+
+                        override fun onPositionDiscontinuity(
+                            oldPosition: Player.PositionInfo,
+                            newPosition: Player.PositionInfo,
+                            reason: Int
+                        ) {
+                            if (isSyncing) return
+                            if (reason == Player.DISCONTINUITY_REASON_SEEK) {
+                                AppLogger.d(LogTag.PLAYER_SYNC, "Seek detected: ${newPosition.positionMs}ms")
+                                broadcastSync(SyncMessage.Seek(newPosition.positionMs))
                             }
                         }
 
@@ -220,6 +233,10 @@ class PlayerActivity : AppCompatActivity() {
                             val errorMsg = "Player error [code=$errorCode]: ${error.message}"
                             AppLogger.e(LogTag.EXOPLAYER, errorMsg, error)
                             debugOverlayError(errorMsg)
+
+                            val isNetworkError = errorCode == PlaybackException.ERROR_CODE_IO_NETWORK_CONNECTION_FAILED ||
+                                    errorCode == PlaybackException.ERROR_CODE_IO_NETWORK_CONNECTION_TIMEOUT ||
+                                    errorCode == PlaybackException.ERROR_CODE_IO_BAD_HTTP_STATUS
 
                             val diagnosis = when (errorCode) {
                                 PlaybackException.ERROR_CODE_IO_NETWORK_CONNECTION_FAILED,
@@ -242,6 +259,20 @@ class PlayerActivity : AppCompatActivity() {
                             }
                             AppLogger.e(LogTag.EXOPLAYER, diagnosis)
                             debugOverlayError(diagnosis)
+
+                            // Auto-retry on network errors (up to 3 times)
+                            if (!isHost && isNetworkError && playerRetryCount < MAX_PLAYER_RETRIES) {
+                                playerRetryCount++
+                                val retryDelay = playerRetryCount * 2000L
+                                debugOverlayWarning("Retrying playback in ${retryDelay / 1000}s (attempt $playerRetryCount/$MAX_PLAYER_RETRIES)")
+                                mainHandler.postDelayed({
+                                    player?.let { p ->
+                                        p.prepare()
+                                        p.playWhenReady = true
+                                    }
+                                }, retryDelay)
+                                return
+                            }
 
                             binding.errorText.visibility = View.VISIBLE
                             if (DebugConfig.isTestMode()) {
@@ -444,22 +475,36 @@ class PlayerActivity : AppCompatActivity() {
                     is SyncMessage.VideoSelected -> {
                         videoSelectedReceived = true
                         if (!isHost) {
-                            val streamUrl = NetworkUtils.buildStreamUrl(
-                                hostAddress ?: return@runOnUiThread,
-                                VideoStreamServer.DEFAULT_PORT
-                            )
+                            val address = hostAddress ?: return@runOnUiThread
+                            // Start local TCP proxy to tunnel through Wi-Fi Direct
+                            if (streamProxy == null) {
+                                try {
+                                    streamProxy = StreamProxy(address, VideoStreamServer.DEFAULT_PORT)
+                                    proxyPort = streamProxy!!.start()
+                                    debugOverlayInfo("Proxy started on localhost:$proxyPort")
+                                } catch (e: Exception) {
+                                    AppLogger.e(LogTag.STREAM_SERVER, "FLOW BREAK: Failed to start stream proxy", e)
+                                    debugOverlayError("Proxy start failed: ${e.message}")
+                                }
+                            }
+                            val streamUrl = if (proxyPort > 0) {
+                                "http://127.0.0.1:$proxyPort/video"
+                            } else {
+                                "http://$address:${VideoStreamServer.DEFAULT_PORT}/video"
+                            }
                             debugOverlayInfo("Stream URL: $streamUrl")
                             val currentUri = player?.currentMediaItem?.localConfiguration?.uri?.toString()
                             val alreadyPlaying = currentUri == streamUrl &&
                                     player?.playbackState != Player.STATE_IDLE &&
                                     player?.playerError == null
                             if (!alreadyPlaying) {
+                                playerRetryCount = 0
                                 binding.errorText.visibility = View.GONE
                                 val mediaItem = MediaItem.fromUri(streamUrl)
                                 player?.setMediaItem(mediaItem)
                                 player?.prepare()
                                 player?.playWhenReady = true
-                                debugOverlayInfo("Viewer preparing stream...")
+                                debugOverlayInfo("Viewer preparing stream via proxy...")
                             } else {
                                 debugOverlayInfo("Already playing, skip re-prepare")
                             }
@@ -472,9 +517,11 @@ class PlayerActivity : AppCompatActivity() {
                     }
                     is SyncMessage.Heartbeat -> { /* Keep-alive */ }
                 }
-                isSyncing = false
+                // Delay resetting isSyncing so ExoPlayer listener callbacks
+                // (dispatched asynchronously) still see isSyncing=true
+                mainHandler.postDelayed({ isSyncing = false }, SYNC_FLAG_DELAY_MS)
             } catch (e: Exception) {
-                isSyncing = false
+                mainHandler.postDelayed({ isSyncing = false }, SYNC_FLAG_DELAY_MS)
                 AppLogger.e(LogTag.PLAYER_SYNC, "Sync handle error: ${message.javaClass.simpleName}", e)
                 debugOverlayError("Sync error: ${e.message}")
             }
@@ -534,6 +581,9 @@ class PlayerActivity : AppCompatActivity() {
         player?.release()
         player = null
 
+        streamProxy?.stop()
+        streamProxy = null
+
         syncClient?.disconnect()
         syncClient = null
 
@@ -565,5 +615,7 @@ class PlayerActivity : AppCompatActivity() {
         const val EXTRA_VIDEO_TITLE = "extra_video_title"
         private const val SERVICE_BIND_TIMEOUT_MS = 10000L
         private const val VIDEO_SELECTED_TIMEOUT_MS = 15000L
+        private const val SYNC_FLAG_DELAY_MS = 200L
+        private const val MAX_PLAYER_RETRIES = 3
     }
 }

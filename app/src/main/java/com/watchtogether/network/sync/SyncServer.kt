@@ -65,6 +65,23 @@ class SyncServer(port: Int = DEFAULT_PORT) : NanoWSD(port) {
         AppLogger.d(LogTag.SOCKET, "Sync server stopped")
     }
 
+    private fun relayToOthers(json: String, sender: SyncWebSocket) {
+        synchronized(connectedClients) {
+            val iterator = connectedClients.iterator()
+            while (iterator.hasNext()) {
+                val client = iterator.next()
+                if (client !== sender) {
+                    try {
+                        client.send(json)
+                    } catch (e: IOException) {
+                        AppLogger.w(LogTag.SOCKET, "Relay failed - client disconnected", e)
+                        iterator.remove()
+                    }
+                }
+            }
+        }
+    }
+
     val clientCount: Int
         get() = synchronized(connectedClients) { connectedClients.size }
 
@@ -89,7 +106,9 @@ class SyncServer(port: Int = DEFAULT_PORT) : NanoWSD(port) {
             val text = message.textPayload ?: return
             val syncMessage = SyncMessage.fromJson(text)
             if (syncMessage != null) {
+                AppLogger.d(LogTag.SOCKET, "Viewer sync received: ${syncMessage.javaClass.simpleName}")
                 _incomingMessages.tryEmit(syncMessage)
+                relayToOthers(text, this)
             }
         }
 

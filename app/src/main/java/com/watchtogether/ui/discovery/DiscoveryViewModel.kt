@@ -42,6 +42,7 @@ class DiscoveryViewModel(application: Application) : AndroidViewModel(applicatio
                 when (state) {
                     is WifiDirectManager.ConnectionState.ConnectedAsHost,
                     is WifiDirectManager.ConnectionState.ConnectedAsClient -> {
+                        stopDiscovery()
                         val name = resolveConnectedDeviceName()
                         _uiState.value = _uiState.value.copy(
                             connectionState = state,
