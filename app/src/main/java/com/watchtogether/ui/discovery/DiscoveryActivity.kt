@@ -137,13 +137,9 @@ class DiscoveryActivity : AppCompatActivity() {
                 binding.connectedDeviceName.visibility = View.VISIBLE
                 binding.connectedDeviceName.text = state.connectedDeviceName ?: getString(R.string.unknown_device)
                 binding.btnDisconnect.visibility = View.VISIBLE
-                binding.btnHost.visibility = View.GONE
+                binding.btnHost.visibility = View.VISIBLE
                 binding.btnScan.visibility = View.GONE
                 binding.progressConnecting.visibility = View.GONE
-                if (!hasNavigated) {
-                    hasNavigated = true
-                    navigateToLibrary(isHost = true, hostAddress = state.connectionState.address)
-                }
             }
             is WifiDirectManager.ConnectionState.ConnectedAsClient -> {
                 binding.connectionCardTitle.text = getString(R.string.status_connected)
