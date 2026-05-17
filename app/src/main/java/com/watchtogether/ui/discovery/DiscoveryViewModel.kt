@@ -39,21 +39,25 @@ class DiscoveryViewModel(application: Application) : AndroidViewModel(applicatio
 
         viewModelScope.launch {
             wifiDirectManager.connectionState.collect { state ->
-                val connectedName = when (state) {
+                when (state) {
                     is WifiDirectManager.ConnectionState.ConnectedAsHost,
                     is WifiDirectManager.ConnectionState.ConnectedAsClient -> {
-                        pendingConnectionDevice?.name
+                        val name = resolveConnectedDeviceName()
+                        _uiState.value = _uiState.value.copy(
+                            connectionState = state,
+                            connectedDeviceName = name
+                        )
+                        saveCurrentConnection(state, name)
                     }
-                    else -> null
-                }
-                _uiState.value = _uiState.value.copy(
-                    connectionState = state,
-                    connectedDeviceName = connectedName
-                )
-                if (state is WifiDirectManager.ConnectionState.ConnectedAsHost ||
-                    state is WifiDirectManager.ConnectionState.ConnectedAsClient
-                ) {
-                    saveCurrentConnection(state)
+                    is WifiDirectManager.ConnectionState.Disconnected -> {
+                        _uiState.value = _uiState.value.copy(
+                            connectionState = state,
+                            connectedDeviceName = null
+                        )
+                    }
+                    else -> {
+                        _uiState.value = _uiState.value.copy(connectionState = state)
+                    }
                 }
             }
         }
@@ -105,16 +109,27 @@ class DiscoveryViewModel(application: Application) : AndroidViewModel(applicatio
         )
     }
 
-    private fun saveCurrentConnection(state: WifiDirectManager.ConnectionState) {
-        pendingConnectionDevice?.let { device ->
-            when (state) {
-                is WifiDirectManager.ConnectionState.ConnectedAsHost,
-                is WifiDirectManager.ConnectionState.ConnectedAsClient -> {
-                    historyManager.addEntry(device.name, device.address)
-                    loadHistory()
-                    pendingConnectionDevice = null
-                }
-                else -> {}
+    private fun resolveConnectedDeviceName(): String? {
+        pendingConnectionDevice?.name?.let { return it }
+        val currentName = _uiState.value.connectedDeviceName
+        if (currentName != null) return currentName
+        val peers = wifiDirectManager.peers.value
+        val connectedPeer = peers.firstOrNull { it.isConnected || it.isInvited }
+        return connectedPeer?.name
+    }
+
+    private fun saveCurrentConnection(state: WifiDirectManager.ConnectionState, deviceName: String?) {
+        val device = pendingConnectionDevice
+        if (device != null) {
+            historyManager.addEntry(device.name, device.address)
+            loadHistory()
+            pendingConnectionDevice = null
+        } else if (deviceName != null) {
+            val peers = wifiDirectManager.peers.value
+            val connectedPeer = peers.firstOrNull { it.isConnected || it.isInvited }
+            if (connectedPeer != null) {
+                historyManager.addEntry(connectedPeer.name, connectedPeer.address)
+                loadHistory()
             }
         }
     }
