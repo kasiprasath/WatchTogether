@@ -112,6 +112,8 @@ class DiscoveryActivity : AppCompatActivity() {
             is WifiDirectManager.ConnectionState.Disconnected -> {
                 binding.connectionStatus.text = getString(R.string.status_disconnected)
                 binding.connectionStatus.setTextColor(getColor(R.color.status_disconnected))
+                binding.connectedDeviceName.visibility = View.GONE
+                binding.connectionCardTitle.text = getString(R.string.app_name)
                 binding.btnDisconnect.visibility = View.GONE
                 binding.btnHost.visibility = View.VISIBLE
                 binding.btnScan.visibility = View.VISIBLE
@@ -121,14 +123,19 @@ class DiscoveryActivity : AppCompatActivity() {
             is WifiDirectManager.ConnectionState.Connecting -> {
                 binding.connectionStatus.text = getString(R.string.status_connecting, state.connectionState.deviceName)
                 binding.connectionStatus.setTextColor(getColor(R.color.status_connecting))
+                binding.connectedDeviceName.visibility = View.GONE
+                binding.connectionCardTitle.text = getString(R.string.app_name)
                 binding.btnDisconnect.visibility = View.VISIBLE
                 binding.btnHost.visibility = View.GONE
                 binding.btnScan.visibility = View.GONE
                 binding.progressConnecting.visibility = View.VISIBLE
             }
             is WifiDirectManager.ConnectionState.ConnectedAsHost -> {
-                binding.connectionStatus.text = getString(R.string.status_hosting)
+                binding.connectionCardTitle.text = getString(R.string.status_hosting)
+                binding.connectionStatus.text = getString(R.string.connected_device_info)
                 binding.connectionStatus.setTextColor(getColor(R.color.status_connected))
+                binding.connectedDeviceName.visibility = View.VISIBLE
+                binding.connectedDeviceName.text = state.connectedDeviceName ?: getString(R.string.unknown_device)
                 binding.btnDisconnect.visibility = View.VISIBLE
                 binding.btnHost.visibility = View.GONE
                 binding.btnScan.visibility = View.GONE
@@ -139,8 +146,11 @@ class DiscoveryActivity : AppCompatActivity() {
                 }
             }
             is WifiDirectManager.ConnectionState.ConnectedAsClient -> {
-                binding.connectionStatus.text = getString(R.string.status_connected)
+                binding.connectionCardTitle.text = getString(R.string.status_connected)
+                binding.connectionStatus.text = getString(R.string.connected_device_info)
                 binding.connectionStatus.setTextColor(getColor(R.color.status_connected))
+                binding.connectedDeviceName.visibility = View.VISIBLE
+                binding.connectedDeviceName.text = state.connectedDeviceName ?: getString(R.string.unknown_device)
                 binding.btnDisconnect.visibility = View.VISIBLE
                 binding.btnHost.visibility = View.GONE
                 binding.btnScan.visibility = View.GONE
@@ -153,6 +163,8 @@ class DiscoveryActivity : AppCompatActivity() {
             is WifiDirectManager.ConnectionState.Error -> {
                 binding.connectionStatus.text = state.connectionState.message
                 binding.connectionStatus.setTextColor(getColor(R.color.status_error))
+                binding.connectedDeviceName.visibility = View.GONE
+                binding.connectionCardTitle.text = getString(R.string.app_name)
                 binding.btnDisconnect.visibility = View.GONE
                 binding.btnHost.visibility = View.VISIBLE
                 binding.btnScan.visibility = View.VISIBLE
@@ -167,11 +179,6 @@ class DiscoveryActivity : AppCompatActivity() {
         } else {
             binding.emptyState.visibility = View.GONE
             binding.recyclerDevices.visibility = View.VISIBLE
-        }
-
-        // Device info
-        state.thisDevice?.let {
-            binding.deviceName.text = it.name
         }
 
         // Connection history
@@ -192,7 +199,19 @@ class DiscoveryActivity : AppCompatActivity() {
             permissionLauncher.launch(PermissionHelper.getRequiredPermissions())
             return
         }
-        navigateToLibrary(isHost = true, hostAddress = null)
+        val state = viewModel.uiState.value.connectionState
+        if (state is WifiDirectManager.ConnectionState.ConnectedAsHost ||
+            state is WifiDirectManager.ConnectionState.ConnectedAsClient
+        ) {
+            val address = when (state) {
+                is WifiDirectManager.ConnectionState.ConnectedAsHost -> state.address
+                is WifiDirectManager.ConnectionState.ConnectedAsClient -> state.hostAddress
+                else -> null
+            }
+            navigateToLibrary(isHost = true, hostAddress = address)
+        } else {
+            Toast.makeText(this, getString(R.string.no_device_connected), Toast.LENGTH_SHORT).show()
+        }
     }
 
     private fun checkPermissionsAndDiscover() {

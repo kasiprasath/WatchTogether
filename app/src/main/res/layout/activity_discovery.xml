@@ -37,8 +37,9 @@
                 android:orientation="vertical"
                 android:padding="16dp">
 
-                <!-- Device Info Card -->
+                <!-- Connection Status Card -->
                 <com.google.android.material.card.MaterialCardView
+                    android:id="@+id/connectionCard"
                     android:layout_width="match_parent"
                     android:layout_height="wrap_content"
                     android:layout_marginBottom="16dp"
@@ -52,11 +53,21 @@
                         android:padding="20dp">
 
                         <TextView
-                            android:id="@+id/deviceName"
+                            android:id="@+id/connectionCardTitle"
                             android:layout_width="wrap_content"
                             android:layout_height="wrap_content"
-                            android:textAppearance="?attr/textAppearanceTitleMedium"
-                            tools:text="My Device" />
+                            android:text="@string/app_name"
+                            android:textAppearance="?attr/textAppearanceTitleMedium" />
+
+                        <TextView
+                            android:id="@+id/connectedDeviceName"
+                            android:layout_width="wrap_content"
+                            android:layout_height="wrap_content"
+                            android:layout_marginTop="4dp"
+                            android:textAppearance="?attr/textAppearanceBodyLarge"
+                            android:textColor="?attr/colorPrimary"
+                            android:visibility="gone"
+                            tools:text="Pixel 7 Pro" />
 
                         <LinearLayout
                             android:layout_width="match_parent"

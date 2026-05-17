@@ -17,6 +17,9 @@
     <string name="status_connecting">Connecting to %s…</string>
     <string name="status_hosting">Hosting session</string>
     <string name="status_connected">Connected</string>
+    <string name="connected_device_info">Device connected</string>
+    <string name="unknown_device">Unknown device</string>
+    <string name="no_device_connected">No device connected. Connect to a device first.</string>
 
     <!-- Video Library -->
     <string name="video_library">Video Library</string>

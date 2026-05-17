@@ -7,6 +7,8 @@ import com.watchtogether.data.model.DeviceInfo
 import com.watchtogether.data.repository.ConnectionHistoryEntry
 import com.watchtogether.data.repository.ConnectionHistoryManager
 import com.watchtogether.network.wifidirect.WifiDirectManager
+import kotlinx.coroutines.Job
+import kotlinx.coroutines.delay
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.StateFlow
 import kotlinx.coroutines.flow.asStateFlow
@@ -20,6 +22,7 @@ class DiscoveryViewModel(application: Application) : AndroidViewModel(applicatio
     private val _uiState = MutableStateFlow(DiscoveryUiState())
     val uiState: StateFlow<DiscoveryUiState> = _uiState.asStateFlow()
     private var pendingConnectionDevice: DeviceInfo? = null
+    private var discoveryTimeoutJob: Job? = null
 
     init {
         wifiDirectManager.initialize()
@@ -36,7 +39,17 @@ class DiscoveryViewModel(application: Application) : AndroidViewModel(applicatio
 
         viewModelScope.launch {
             wifiDirectManager.connectionState.collect { state ->
-                _uiState.value = _uiState.value.copy(connectionState = state)
+                val connectedName = when (state) {
+                    is WifiDirectManager.ConnectionState.ConnectedAsHost,
+                    is WifiDirectManager.ConnectionState.ConnectedAsClient -> {
+                        pendingConnectionDevice?.name
+                    }
+                    else -> null
+                }
+                _uiState.value = _uiState.value.copy(
+                    connectionState = state,
+                    connectedDeviceName = connectedName
+                )
                 if (state is WifiDirectManager.ConnectionState.ConnectedAsHost ||
                     state is WifiDirectManager.ConnectionState.ConnectedAsClient
                 ) {
@@ -59,10 +72,16 @@ class DiscoveryViewModel(application: Application) : AndroidViewModel(applicatio
     }
 
     fun startDiscovery() {
+        discoveryTimeoutJob?.cancel()
         wifiDirectManager.discoverPeers()
+        discoveryTimeoutJob = viewModelScope.launch {
+            delay(DISCOVERY_TIMEOUT_MS)
+            wifiDirectManager.stopDiscovery()
+        }
     }
 
     fun stopDiscovery() {
+        discoveryTimeoutJob?.cancel()
         wifiDirectManager.stopDiscovery()
     }
 
@@ -111,6 +130,11 @@ class DiscoveryViewModel(application: Application) : AndroidViewModel(applicatio
         val isDiscovering: Boolean = false,
         val isEmpty: Boolean = true,
         val thisDevice: DeviceInfo? = null,
-        val connectionHistory: List<ConnectionHistoryEntry> = emptyList()
+        val connectionHistory: List<ConnectionHistoryEntry> = emptyList(),
+        val connectedDeviceName: String? = null
     )
+
+    companion object {
+        private const val DISCOVERY_TIMEOUT_MS = 15_000L
+    }
 }
