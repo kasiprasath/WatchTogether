@@ -526,6 +526,7 @@ class PlayerActivity : AppCompatActivity() {
                                 player?.setMediaItem(mediaItem)
                                 player?.prepare()
                                 player?.playWhenReady = true
+                                recordSyncAction("play")
                                 debugOverlayInfo("Viewer preparing stream via proxy...")
                             } else {
                                 debugOverlayInfo("Already playing, skip re-prepare")
