@@ -50,10 +50,15 @@ class DiscoveryViewModel(application: Application) : AndroidViewModel(applicatio
                         saveCurrentConnection(state, name)
                     }
                     is WifiDirectManager.ConnectionState.Disconnected -> {
+                        pendingConnectionDevice = null
                         _uiState.value = _uiState.value.copy(
                             connectionState = state,
                             connectedDeviceName = null
                         )
+                    }
+                    is WifiDirectManager.ConnectionState.Error -> {
+                        pendingConnectionDevice = null
+                        _uiState.value = _uiState.value.copy(connectionState = state)
                     }
                     else -> {
                         _uiState.value = _uiState.value.copy(connectionState = state)
