@@ -8,6 +8,7 @@ import android.os.Bundle
 import android.os.Handler
 import android.os.IBinder
 import android.os.Looper
+import android.os.SystemClock
 import android.view.View
 import android.view.WindowManager
 import androidx.activity.viewModels
@@ -51,6 +52,11 @@ class PlayerActivity : AppCompatActivity() {
     private var isBound = false
     private var isSyncing = false
     private val mainHandler = Handler(Looper.getMainLooper())
+
+    // Echo detection: track last applied sync action to prevent re-broadcast
+    // after ExoPlayer async callbacks fire (which may be delayed by buffering)
+    private var lastSyncAction: String? = null
+    private var lastSyncTime: Long = 0
 
     // Flow breakage detection
     private var videoSelectedReceived = false
@@ -206,8 +212,13 @@ class PlayerActivity : AppCompatActivity() {
                         }
 
                         override fun onIsPlayingChanged(isPlaying: Boolean) {
+                            val action = if (isPlaying) "play" else "pause"
                             AppLogger.d(LogTag.PLAYER_SYNC, "isPlaying=$isPlaying, isSyncing=$isSyncing, isHost=$isHost")
                             if (isSyncing) return
+                            if (isSyncEcho(action)) {
+                                AppLogger.d(LogTag.PLAYER_SYNC, "Suppressed echo: $action")
+                                return
+                            }
                             val position = exoPlayer.currentPosition
                             if (isPlaying) {
                                 broadcastSync(SyncMessage.Play(position))
@@ -223,6 +234,10 @@ class PlayerActivity : AppCompatActivity() {
                         ) {
                             if (isSyncing) return
                             if (reason == Player.DISCONTINUITY_REASON_SEEK) {
+                                if (isSyncEcho("seek")) {
+                                    AppLogger.d(LogTag.PLAYER_SYNC, "Suppressed echo: seek")
+                                    return
+                                }
                                 AppLogger.d(LogTag.PLAYER_SYNC, "Seek detected: ${newPosition.positionMs}ms")
                                 broadcastSync(SyncMessage.Seek(newPosition.positionMs))
                             }
@@ -459,14 +474,17 @@ class PlayerActivity : AppCompatActivity() {
                 isSyncing = true
                 when (message) {
                     is SyncMessage.Play -> {
+                        recordSyncAction("play")
                         player?.seekTo(message.position)
                         player?.play()
                     }
                     is SyncMessage.Pause -> {
+                        recordSyncAction("pause")
                         player?.seekTo(message.position)
                         player?.pause()
                     }
                     is SyncMessage.Seek -> {
+                        recordSyncAction("seek")
                         player?.seekTo(message.position)
                     }
                     is SyncMessage.Stop -> {
@@ -475,7 +493,11 @@ class PlayerActivity : AppCompatActivity() {
                     is SyncMessage.VideoSelected -> {
                         videoSelectedReceived = true
                         if (!isHost) {
-                            val address = hostAddress ?: return@runOnUiThread
+                            val address = hostAddress
+                            if (address == null) {
+                                mainHandler.postDelayed({ isSyncing = false }, SYNC_FLAG_DELAY_MS)
+                                return@runOnUiThread
+                            }
                             // Start local TCP proxy to tunnel through Wi-Fi Direct
                             if (streamProxy == null) {
                                 try {
@@ -526,6 +548,16 @@ class PlayerActivity : AppCompatActivity() {
                 debugOverlayError("Sync error: ${e.message}")
             }
         }
+    }
+
+    private fun recordSyncAction(action: String) {
+        lastSyncAction = action
+        lastSyncTime = SystemClock.elapsedRealtime()
+    }
+
+    private fun isSyncEcho(action: String): Boolean {
+        return action == lastSyncAction &&
+                SystemClock.elapsedRealtime() - lastSyncTime < SYNC_ECHO_WINDOW_MS
     }
 
     private fun broadcastSync(message: SyncMessage) {
@@ -616,6 +648,7 @@ class PlayerActivity : AppCompatActivity() {
         private const val SERVICE_BIND_TIMEOUT_MS = 10000L
         private const val VIDEO_SELECTED_TIMEOUT_MS = 15000L
         private const val SYNC_FLAG_DELAY_MS = 200L
+        private const val SYNC_ECHO_WINDOW_MS = 2000L
         private const val MAX_PLAYER_RETRIES = 3
     }
 }
