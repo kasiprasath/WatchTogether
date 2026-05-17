@@ -42,7 +42,7 @@ class DeviceAdapter(
                 binding.root.context.getColor(statusColor)
             )
 
-            val canConnect = device.isAvailable || device.isInvited || device.isConnected
+            val canConnect = device.isAvailable || device.isInvited
             binding.root.isEnabled = canConnect
             binding.root.alpha = if (canConnect) 1.0f else 0.5f
 
