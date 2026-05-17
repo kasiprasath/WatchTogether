@@ -7,6 +7,7 @@ import android.os.Build
 import com.watchtogether.debug.AnrWatchdog
 import com.watchtogether.debug.AppLogger
 import com.watchtogether.debug.CrashHandler
+import com.watchtogether.debug.DebugConfig
 import com.watchtogether.debug.FileLogger
 import timber.log.Timber
 
@@ -24,6 +25,7 @@ class WatchTogetherApp : Application() {
     }
 
     private fun initializeLogging() {
+        DebugConfig.init(this)
         fileLogger = FileLogger(this)
         AppLogger.init(fileLogger)
 
@@ -38,7 +40,7 @@ class WatchTogetherApp : Application() {
             anrWatchdog = AnrWatchdog(fileLogger).apply { start() }
         }
 
-        Timber.d("WatchTogether logging initialized")
+        Timber.d("WatchTogether logging initialized (mode=${DebugConfig.getMode().label})")
     }
 
     private fun isDebugBuild(): Boolean {

@@ -50,18 +50,31 @@ class VideoStreamServer(port: Int = DEFAULT_PORT) : NanoHTTPD(port) {
     }
 
     private fun serveVideo(session: IHTTPSession): Response {
-        val path = currentVideoPath ?: return newFixedLengthResponse(
-            Response.Status.NOT_FOUND,
-            MIME_PLAINTEXT,
-            "No video selected"
-        )
-
-        val file = File(path)
-        if (!file.exists() || !file.canRead()) {
+        val path = currentVideoPath
+        if (path == null) {
+            AppLogger.e(LogTag.STREAM_SERVER, "FLOW BREAK: Video requested but no video path set")
             return newFixedLengthResponse(
                 Response.Status.NOT_FOUND,
                 MIME_PLAINTEXT,
-                "Video file not accessible"
+                "No video selected"
+            )
+        }
+
+        val file = File(path)
+        if (!file.exists()) {
+            AppLogger.e(LogTag.STREAM_SERVER, "FLOW BREAK: Video file not found at $path")
+            return newFixedLengthResponse(
+                Response.Status.NOT_FOUND,
+                MIME_PLAINTEXT,
+                "Video file not found: $path"
+            )
+        }
+        if (!file.canRead()) {
+            AppLogger.e(LogTag.STREAM_SERVER, "FLOW BREAK: Video file not readable at $path")
+            return newFixedLengthResponse(
+                Response.Status.FORBIDDEN,
+                MIME_PLAINTEXT,
+                "Video file not readable: $path"
             )
         }
 
@@ -145,9 +158,10 @@ class VideoStreamServer(port: Int = DEFAULT_PORT) : NanoHTTPD(port) {
     fun startServer() {
         try {
             start(SOCKET_READ_TIMEOUT, false)
-            AppLogger.d(LogTag.STREAM_SERVER, "Server started on port $listeningPort")
+            AppLogger.i(LogTag.STREAM_SERVER, "Video HTTP server started on port $listeningPort")
         } catch (e: IOException) {
-            AppLogger.e(LogTag.STREAM_SERVER, "Failed to start server", e)
+            AppLogger.e(LogTag.STREAM_SERVER, "FLOW BREAK: Video HTTP server failed to start on port $DEFAULT_PORT - port may be in use", e)
+            throw e
         }
     }
 

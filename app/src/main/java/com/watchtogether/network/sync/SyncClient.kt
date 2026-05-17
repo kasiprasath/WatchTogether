@@ -84,13 +84,19 @@ class SyncClient {
                         }
                     } catch (e: Exception) {
                         if (_isConnected.value) {
-                            AppLogger.w(LogTag.SOCKET, "Error reading frame", e)
+                            AppLogger.e(LogTag.SOCKET, "FLOW BREAK: Frame read failed - connection may be closed", e)
                             break
                         }
                     }
                 }
+            } catch (e: java.net.ConnectException) {
+                AppLogger.e(LogTag.SOCKET, "FLOW BREAK: Cannot reach host at $hostAddress:$port - connection refused", e)
+            } catch (e: java.net.SocketTimeoutException) {
+                AppLogger.e(LogTag.SOCKET, "FLOW BREAK: Connection to $hostAddress:$port timed out", e)
+            } catch (e: java.net.UnknownHostException) {
+                AppLogger.e(LogTag.SOCKET, "FLOW BREAK: Unknown host $hostAddress", e)
             } catch (e: Exception) {
-                AppLogger.e(LogTag.SOCKET, "Connection error", e)
+                AppLogger.e(LogTag.SOCKET, "FLOW BREAK: Sync connection failed to $hostAddress:$port", e)
             } finally {
                 _isConnected.value = false
                 cleanup()
@@ -173,7 +179,7 @@ class SyncClient {
                     os.flush()
                 }
             } catch (e: Exception) {
-                AppLogger.e(LogTag.SOCKET, "Failed to send message", e)
+                AppLogger.e(LogTag.SOCKET, "FLOW BREAK: Failed to send sync message ${message.javaClass.simpleName}", e)
             }
         }
     }

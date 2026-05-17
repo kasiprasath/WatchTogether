@@ -33,7 +33,7 @@ class SyncServer(port: Int = DEFAULT_PORT) : NanoWSD(port) {
                 try {
                     client.send(json)
                 } catch (e: IOException) {
-                    AppLogger.w(LogTag.SOCKET, "Failed to send to client, removing", e)
+                    AppLogger.w(LogTag.SOCKET, "FLOW BREAK: Broadcast failed - client disconnected during send", e)
                     iterator.remove()
                 }
             }
@@ -43,9 +43,10 @@ class SyncServer(port: Int = DEFAULT_PORT) : NanoWSD(port) {
     fun startServer() {
         try {
             start(SOCKET_READ_TIMEOUT, false)
-            AppLogger.d(LogTag.SOCKET, "Sync server started on port $listeningPort")
+            AppLogger.i(LogTag.SOCKET, "Sync WebSocket server started on port $listeningPort")
         } catch (e: IOException) {
-            AppLogger.e(LogTag.SOCKET, "Failed to start sync server", e)
+            AppLogger.e(LogTag.SOCKET, "FLOW BREAK: Sync server failed to start on port $DEFAULT_PORT - port may be in use", e)
+            throw e
         }
     }
 
@@ -98,7 +99,7 @@ class SyncServer(port: Int = DEFAULT_PORT) : NanoWSD(port) {
             synchronized(connectedClients) {
                 connectedClients.remove(this)
             }
-            AppLogger.w(LogTag.SOCKET, "WebSocket exception", exception)
+            AppLogger.e(LogTag.SOCKET, "FLOW BREAK: WebSocket client error - ${exception.message}", exception)
         }
     }
 

@@ -63,41 +63,79 @@ class StreamingService : Service() {
     }
 
     fun startStreaming() {
-        val notification = createNotification()
-        if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.Q) {
-            startForeground(
-                NOTIFICATION_ID,
-                notification,
-                ServiceInfo.FOREGROUND_SERVICE_TYPE_CONNECTED_DEVICE
-            )
-        } else {
-            startForeground(NOTIFICATION_ID, notification)
+        try {
+            val notification = createNotification()
+            if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.Q) {
+                startForeground(
+                    NOTIFICATION_ID,
+                    notification,
+                    ServiceInfo.FOREGROUND_SERVICE_TYPE_CONNECTED_DEVICE
+                )
+            } else {
+                startForeground(NOTIFICATION_ID, notification)
+            }
+        } catch (e: Exception) {
+            AppLogger.e(LogTag.STREAM_SERVER, "FLOW BREAK: Failed to start foreground service", e)
+            stopSelf()
+            return
         }
 
-        if (videoServer == null) {
-            videoServer = VideoStreamServer().apply { startServer() }
+        try {
+            if (videoServer == null) {
+                videoServer = VideoStreamServer().apply { startServer() }
+            }
+            AppLogger.i(LogTag.STREAM_SERVER, "Video server started on port ${VideoStreamServer.DEFAULT_PORT}")
+        } catch (e: Exception) {
+            AppLogger.e(LogTag.STREAM_SERVER, "FLOW BREAK: Video server failed to start on port ${VideoStreamServer.DEFAULT_PORT}", e)
         }
-        if (syncServer == null) {
-            syncServer = SyncServer().apply { startServer() }
+
+        try {
+            if (syncServer == null) {
+                syncServer = SyncServer().apply { startServer() }
+            }
+            AppLogger.i(LogTag.SOCKET, "Sync server started on port ${SyncServer.DEFAULT_PORT}")
+        } catch (e: Exception) {
+            AppLogger.e(LogTag.SOCKET, "FLOW BREAK: Sync server failed to start on port ${SyncServer.DEFAULT_PORT}", e)
         }
-        AppLogger.d(LogTag.STREAM_SERVER, "Streaming started")
+
+        AppLogger.i(LogTag.STREAM_SERVER, "Streaming started (video=${videoServer != null}, sync=${syncServer != null})")
     }
 
     fun stopStreaming() {
-        videoServer?.stopServer()
+        try {
+            videoServer?.stopServer()
+        } catch (e: Exception) {
+            AppLogger.w(LogTag.STREAM_SERVER, "Error stopping video server", e)
+        }
         videoServer = null
-        syncServer?.stopServer()
+        try {
+            syncServer?.stopServer()
+        } catch (e: Exception) {
+            AppLogger.w(LogTag.SOCKET, "Error stopping sync server", e)
+        }
         syncServer = null
-        stopForeground(STOP_FOREGROUND_REMOVE)
-        stopSelf()
+        try {
+            stopForeground(STOP_FOREGROUND_REMOVE)
+            stopSelf()
+        } catch (e: Exception) {
+            AppLogger.w(LogTag.STREAM_SERVER, "Error stopping foreground service", e)
+        }
         AppLogger.d(LogTag.STREAM_SERVER, "Streaming stopped")
     }
 
     fun setVideoPath(path: String) {
+        if (videoServer == null) {
+            AppLogger.e(LogTag.STREAM_SERVER, "FLOW BREAK: setVideoPath called but video server is null")
+            return
+        }
         videoServer?.setVideoPath(path)
     }
 
     fun broadcastSyncMessage(message: SyncMessage) {
+        if (syncServer == null) {
+            AppLogger.e(LogTag.SOCKET, "FLOW BREAK: broadcastSyncMessage called but sync server is null")
+            return
+        }
         syncServer?.broadcastMessage(message)
     }
 
