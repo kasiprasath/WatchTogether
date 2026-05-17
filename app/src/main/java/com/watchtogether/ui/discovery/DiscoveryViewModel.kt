@@ -58,7 +58,10 @@ class DiscoveryViewModel(application: Application) : AndroidViewModel(applicatio
                     }
                     is WifiDirectManager.ConnectionState.Error -> {
                         pendingConnectionDevice = null
-                        _uiState.value = _uiState.value.copy(connectionState = state)
+                        _uiState.value = _uiState.value.copy(
+                            connectionState = state,
+                            connectedDeviceName = null
+                        )
                     }
                     else -> {
                         _uiState.value = _uiState.value.copy(connectionState = state)
