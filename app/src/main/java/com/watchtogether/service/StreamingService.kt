@@ -22,6 +22,7 @@ import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.SupervisorJob
 import kotlinx.coroutines.cancel
 import kotlinx.coroutines.flow.SharedFlow
+import kotlinx.coroutines.launch
 
 class StreamingService : Service() {
 
@@ -136,7 +137,13 @@ class StreamingService : Service() {
             AppLogger.e(LogTag.SOCKET, "FLOW BREAK: broadcastSyncMessage called but sync server is null")
             return
         }
-        syncServer?.broadcastMessage(message)
+        serviceScope.launch {
+            try {
+                syncServer?.broadcastMessage(message)
+            } catch (e: Exception) {
+                AppLogger.e(LogTag.SOCKET, "FLOW BREAK: broadcastSyncMessage failed", e)
+            }
+        }
     }
 
     private fun createNotification(): Notification {

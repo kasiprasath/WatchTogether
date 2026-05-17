@@ -113,6 +113,7 @@ class WifiDirectManager(private val context: Context) {
         _connectionState.value = ConnectionState.Connecting(device.name)
         val config = WifiP2pConfig().apply {
             deviceAddress = device.address
+            groupOwnerIntent = 15 // Force inviter to be group owner (Host)
         }
 
         manager?.connect(channel, config, object : WifiP2pManager.ActionListener {

@@ -24,13 +24,19 @@ object DebugConfig {
     private var prefs: SharedPreferences? = null
     private val listeners = mutableListOf<(Mode) -> Unit>()
 
+    private var isDebugBuild = false
+
     fun init(context: Context) {
         prefs = context.getSharedPreferences(PREFS_NAME, Context.MODE_PRIVATE)
-        val isDebugBuild = context.applicationInfo.flags and
+        isDebugBuild = context.applicationInfo.flags and
                 android.content.pm.ApplicationInfo.FLAG_DEBUGGABLE != 0
-        val defaultMode = if (isDebugBuild) Mode.TEST else Mode.LIVE
-        val saved = prefs?.getString(KEY_MODE, defaultMode.name) ?: defaultMode.name
-        currentMode = try { Mode.valueOf(saved) } catch (_: Exception) { defaultMode }
+        // Debug builds always use TEST mode
+        if (isDebugBuild) {
+            currentMode = Mode.TEST
+        } else {
+            val saved = prefs?.getString(KEY_MODE, Mode.LIVE.name) ?: Mode.LIVE.name
+            currentMode = try { Mode.valueOf(saved) } catch (_: Exception) { Mode.LIVE }
+        }
     }
 
     fun getMode(): Mode = currentMode
