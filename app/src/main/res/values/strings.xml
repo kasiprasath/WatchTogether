@@ -40,4 +40,34 @@
     <!-- Notifications -->
     <string name="streaming_notification_title">WatchTogether</string>
     <string name="streaming_notification_text">Streaming video to connected devices</string>
+
+    <!-- Debug Screen -->
+    <string name="debug_screen_title">Debug Console</string>
+    <string name="tab_logs">Logs</string>
+    <string name="tab_crashes">Crashes</string>
+    <string name="tab_status">Status</string>
+    <string name="filter_all">All</string>
+    <string name="filter_wifi">Wi-Fi</string>
+    <string name="filter_stream">Stream</string>
+    <string name="filter_player">Player</string>
+    <string name="filter_socket">Socket</string>
+    <string name="filter_crash">Crash</string>
+    <string name="no_crashes">No crash reports</string>
+    <string name="action_copy">Copy</string>
+    <string name="action_export_txt">TXT</string>
+    <string name="action_export_zip">ZIP</string>
+    <string name="action_clear">Clear</string>
+    <string name="logs_copied">Logs copied to clipboard</string>
+    <string name="logs_cleared">Logs cleared</string>
+    <string name="share_logs">Share logs</string>
+    <string name="clear_logs_title">Clear all logs?</string>
+    <string name="clear_logs_message">This will delete all log files and crash reports. This action cannot be undone.</string>
+    <string name="status_connection">Connection</string>
+    <string name="status_stream">Streaming</string>
+    <string name="status_player">Player</string>
+    <string name="status_app_info">App Info</string>
+    <string name="status_connection_detail">State: %1$s</string>
+    <string name="status_stream_detail">In-memory logs: %1$s\nLog files: %2$s</string>
+    <string name="status_player_detail">Player events logged: %1$s</string>
+    <string name="status_app_detail">Version: %1$s (%2$s)\nDevice: %3$s\nAndroid SDK: %4$s\nBuild: %5$s</string>
 </resources>

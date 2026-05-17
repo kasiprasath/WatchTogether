@@ -6,7 +6,6 @@ import android.content.Intent
 import android.content.ServiceConnection
 import android.os.Bundle
 import android.os.IBinder
-import android.util.Log
 import android.view.View
 import android.view.WindowManager
 import androidx.activity.viewModels
@@ -21,6 +20,8 @@ import androidx.media3.exoplayer.ExoPlayer
 import com.watchtogether.R
 import com.watchtogether.data.model.SyncMessage
 import com.watchtogether.databinding.ActivityPlayerBinding
+import com.watchtogether.debug.AppLogger
+import com.watchtogether.debug.LogTag
 import com.watchtogether.network.server.VideoStreamServer
 import com.watchtogether.network.sync.SyncClient
 import com.watchtogether.network.sync.SyncServer
@@ -106,6 +107,14 @@ class PlayerActivity : AppCompatActivity() {
 
                 exoPlayer.addListener(object : Player.Listener {
                     override fun onPlaybackStateChanged(playbackState: Int) {
+                        val stateName = when (playbackState) {
+                            Player.STATE_BUFFERING -> "BUFFERING"
+                            Player.STATE_READY -> "READY"
+                            Player.STATE_ENDED -> "ENDED"
+                            Player.STATE_IDLE -> "IDLE"
+                            else -> "UNKNOWN($playbackState)"
+                        }
+                        AppLogger.d(LogTag.EXOPLAYER, "Playback state: $stateName")
                         when (playbackState) {
                             Player.STATE_BUFFERING -> {
                                 binding.bufferingIndicator.visibility = View.VISIBLE
@@ -123,6 +132,7 @@ class PlayerActivity : AppCompatActivity() {
                     }
 
                     override fun onIsPlayingChanged(isPlaying: Boolean) {
+                        AppLogger.d(LogTag.PLAYER_SYNC, "isPlaying=$isPlaying, isSyncing=$isSyncing, isHost=$isHost")
                         if (isSyncing) return
                         if (isHost) {
                             val position = exoPlayer.currentPosition
@@ -135,9 +145,25 @@ class PlayerActivity : AppCompatActivity() {
                     }
 
                     override fun onPlayerError(error: PlaybackException) {
-                        Log.e(TAG, "Player error: ${error.message}")
+                        val errorCode = error.errorCode
+                        val errorMsg = "Player error [code=$errorCode]: ${error.message}"
+                        AppLogger.e(LogTag.EXOPLAYER, errorMsg, error)
+                        when (errorCode) {
+                            PlaybackException.ERROR_CODE_IO_NETWORK_CONNECTION_FAILED,
+                            PlaybackException.ERROR_CODE_IO_NETWORK_CONNECTION_TIMEOUT ->
+                                AppLogger.e(LogTag.EXOPLAYER, "Network connection issue - stream server may be unreachable")
+                            PlaybackException.ERROR_CODE_DECODER_INIT_FAILED,
+                            PlaybackException.ERROR_CODE_DECODER_QUERY_FAILED ->
+                                AppLogger.e(LogTag.EXOPLAYER, "Decoder failure - codec may not be supported")
+                            PlaybackException.ERROR_CODE_IO_BAD_HTTP_STATUS ->
+                                AppLogger.e(LogTag.EXOPLAYER, "Bad HTTP status from stream server")
+                        }
                         binding.errorText.visibility = View.VISIBLE
                         binding.errorText.text = getString(R.string.playback_error, error.message ?: "Unknown error")
+                    }
+
+                    override fun onVideoSizeChanged(videoSize: androidx.media3.common.VideoSize) {
+                        AppLogger.d(LogTag.EXOPLAYER, "Video size: ${videoSize.width}x${videoSize.height}")
                     }
                 })
 
@@ -224,6 +250,7 @@ class PlayerActivity : AppCompatActivity() {
     }
 
     private fun handleSyncMessage(message: SyncMessage) {
+        AppLogger.d(LogTag.PLAYER_SYNC, "Received sync: ${message.javaClass.simpleName}")
         runOnUiThread {
             isSyncing = true
             when (message) {
@@ -272,6 +299,7 @@ class PlayerActivity : AppCompatActivity() {
     }
 
     private fun broadcastSync(message: SyncMessage) {
+        AppLogger.d(LogTag.PLAYER_SYNC, "Broadcasting sync: ${message.javaClass.simpleName}")
         if (isHost) {
             streamingService?.broadcastSyncMessage(message)
         } else {
@@ -314,7 +342,6 @@ class PlayerActivity : AppCompatActivity() {
     }
 
     companion object {
-        private const val TAG = "PlayerActivity"
         const val EXTRA_VIDEO_PATH = "extra_video_path"
         const val EXTRA_VIDEO_TITLE = "extra_video_title"
     }

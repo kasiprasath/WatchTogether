@@ -1,7 +1,8 @@
 package com.watchtogether.network.sync
 
-import android.util.Log
 import com.watchtogether.data.model.SyncMessage
+import com.watchtogether.debug.AppLogger
+import com.watchtogether.debug.LogTag
 import fi.iki.elonen.NanoWSD
 import kotlinx.coroutines.flow.MutableSharedFlow
 import kotlinx.coroutines.flow.SharedFlow
@@ -19,7 +20,7 @@ class SyncServer(port: Int = DEFAULT_PORT) : NanoWSD(port) {
 
     override fun openWebSocket(handshake: IHTTPSession): WebSocket {
         val ws = SyncWebSocket(handshake)
-        Log.d(TAG, "New WebSocket connection from ${handshake.remoteIpAddress}")
+        AppLogger.d(LogTag.SOCKET, "New WebSocket connection from ${handshake.remoteIpAddress}")
         return ws
     }
 
@@ -32,7 +33,7 @@ class SyncServer(port: Int = DEFAULT_PORT) : NanoWSD(port) {
                 try {
                     client.send(json)
                 } catch (e: IOException) {
-                    Log.w(TAG, "Failed to send to client, removing", e)
+                    AppLogger.w(LogTag.SOCKET, "Failed to send to client, removing", e)
                     iterator.remove()
                 }
             }
@@ -42,9 +43,9 @@ class SyncServer(port: Int = DEFAULT_PORT) : NanoWSD(port) {
     fun startServer() {
         try {
             start(SOCKET_READ_TIMEOUT, false)
-            Log.d(TAG, "Sync server started on port $listeningPort")
+            AppLogger.d(LogTag.SOCKET, "Sync server started on port $listeningPort")
         } catch (e: IOException) {
-            Log.e(TAG, "Failed to start sync server", e)
+            AppLogger.e(LogTag.SOCKET, "Failed to start sync server", e)
         }
     }
 
@@ -54,13 +55,13 @@ class SyncServer(port: Int = DEFAULT_PORT) : NanoWSD(port) {
                 try {
                     client.close(NanoWSD.WebSocketFrame.CloseCode.NormalClosure, "Server stopping", false)
                 } catch (e: Exception) {
-                    Log.w(TAG, "Error closing client", e)
+                    AppLogger.w(LogTag.SOCKET, "Error closing client", e)
                 }
             }
             connectedClients.clear()
         }
         stop()
-        Log.d(TAG, "Sync server stopped")
+        AppLogger.d(LogTag.SOCKET, "Sync server stopped")
     }
 
     val clientCount: Int
@@ -72,7 +73,7 @@ class SyncServer(port: Int = DEFAULT_PORT) : NanoWSD(port) {
                 connectedClients.add(this)
             }
             _clientConnected.tryEmit(true)
-            Log.d(TAG, "Client connected. Total: ${connectedClients.size}")
+            AppLogger.d(LogTag.SOCKET, "Client connected. Total: ${connectedClients.size}")
         }
 
         override fun onClose(code: NanoWSD.WebSocketFrame.CloseCode?, reason: String?, initiatedByRemote: Boolean) {
@@ -80,7 +81,7 @@ class SyncServer(port: Int = DEFAULT_PORT) : NanoWSD(port) {
                 connectedClients.remove(this)
             }
             _clientConnected.tryEmit(false)
-            Log.d(TAG, "Client disconnected. Total: ${connectedClients.size}")
+            AppLogger.d(LogTag.SOCKET, "Client disconnected. Total: ${connectedClients.size}")
         }
 
         override fun onMessage(message: NanoWSD.WebSocketFrame) {
@@ -97,12 +98,11 @@ class SyncServer(port: Int = DEFAULT_PORT) : NanoWSD(port) {
             synchronized(connectedClients) {
                 connectedClients.remove(this)
             }
-            Log.w(TAG, "WebSocket exception", exception)
+            AppLogger.w(LogTag.SOCKET, "WebSocket exception", exception)
         }
     }
 
     companion object {
-        private const val TAG = "SyncServer"
         const val DEFAULT_PORT = 8081
         private const val SOCKET_READ_TIMEOUT = 30000
     }

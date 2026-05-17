@@ -15,6 +15,9 @@ import com.watchtogether.R
 import com.watchtogether.data.model.DeviceInfo
 import com.watchtogether.databinding.ActivityDiscoveryBinding
 import com.watchtogether.network.wifidirect.WifiDirectManager
+import com.watchtogether.debug.AppLogger
+import com.watchtogether.debug.LogTag
+import com.watchtogether.ui.debug.DebugActivity
 import com.watchtogether.ui.library.VideoLibraryActivity
 import com.watchtogether.ui.player.PlayerActivity
 import com.watchtogether.util.PermissionHelper
@@ -90,6 +93,13 @@ class DiscoveryActivity : AppCompatActivity() {
 
         binding.swipeRefresh.setOnRefreshListener {
             checkPermissionsAndDiscover()
+        }
+
+        // Hidden debug screen access: long-press on the app title in the connection card
+        binding.connectionCardTitle.setOnLongClickListener {
+            AppLogger.d(LogTag.UI, "Debug screen opened via long-press")
+            startActivity(Intent(this, DebugActivity::class.java))
+            true
         }
     }
 

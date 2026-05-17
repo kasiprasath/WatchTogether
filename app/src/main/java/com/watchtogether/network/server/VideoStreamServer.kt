@@ -1,6 +1,7 @@
 package com.watchtogether.network.server
 
-import android.util.Log
+import com.watchtogether.debug.AppLogger
+import com.watchtogether.debug.LogTag
 import fi.iki.elonen.NanoHTTPD
 import java.io.File
 import java.io.FileInputStream
@@ -22,12 +23,12 @@ class VideoStreamServer(port: Int = DEFAULT_PORT) : NanoHTTPD(port) {
 
     fun setVideoPath(path: String) {
         currentVideoPath = path
-        Log.d(TAG, "Video path set: $path")
+        AppLogger.d(LogTag.STREAM_SERVER, "Video path set: $path")
     }
 
     override fun serve(session: IHTTPSession): Response {
         val uri = session.uri
-        Log.d(TAG, "Request: $uri")
+        AppLogger.d(LogTag.STREAM_SERVER, "Request: $uri")
 
         return when {
             uri == "/status" -> serveStatus()
@@ -88,7 +89,7 @@ class VideoStreamServer(port: Int = DEFAULT_PORT) : NanoHTTPD(port) {
             response.addHeader("Content-Length", fileLength.toString())
             response
         } catch (e: IOException) {
-            Log.e(TAG, "Error serving full content", e)
+            AppLogger.e(LogTag.STREAM_SERVER, "Error serving full content", e)
             newFixedLengthResponse(
                 Response.Status.INTERNAL_ERROR,
                 MIME_PLAINTEXT,
@@ -128,7 +129,7 @@ class VideoStreamServer(port: Int = DEFAULT_PORT) : NanoHTTPD(port) {
             response.addHeader("Content-Length", contentLength.toString())
             response
         } catch (e: Exception) {
-            Log.e(TAG, "Error serving partial content", e)
+            AppLogger.e(LogTag.STREAM_SERVER, "Error serving partial content", e)
             newFixedLengthResponse(
                 Response.Status.INTERNAL_ERROR,
                 MIME_PLAINTEXT,
@@ -144,20 +145,19 @@ class VideoStreamServer(port: Int = DEFAULT_PORT) : NanoHTTPD(port) {
     fun startServer() {
         try {
             start(SOCKET_READ_TIMEOUT, false)
-            Log.d(TAG, "Server started on port $listeningPort")
+            AppLogger.d(LogTag.STREAM_SERVER, "Server started on port $listeningPort")
         } catch (e: IOException) {
-            Log.e(TAG, "Failed to start server", e)
+            AppLogger.e(LogTag.STREAM_SERVER, "Failed to start server", e)
         }
     }
 
     fun stopServer() {
         stop()
         currentVideoPath = null
-        Log.d(TAG, "Server stopped")
+        AppLogger.d(LogTag.STREAM_SERVER, "Server stopped")
     }
 
     companion object {
-        private const val TAG = "VideoStreamServer"
         const val DEFAULT_PORT = 8080
         private const val CHUNK_SIZE = 2 * 1024 * 1024L // 2MB chunks
         private const val SOCKET_READ_TIMEOUT = 30000

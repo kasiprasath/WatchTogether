@@ -8,7 +8,8 @@ import android.net.NetworkInfo
 import android.net.wifi.p2p.WifiP2pDevice
 import android.net.wifi.p2p.WifiP2pManager
 import android.os.Build
-import android.util.Log
+import com.watchtogether.debug.AppLogger
+import com.watchtogether.debug.LogTag
 
 class WifiDirectBroadcastReceiver(
     private val wifiDirectManager: WifiDirectManager,
@@ -25,9 +26,9 @@ class WifiDirectBroadcastReceiver(
                     wifiDirectManager.updateConnectionState(
                         WifiDirectManager.ConnectionState.Error("Wi-Fi Direct is not enabled")
                     )
-                    Log.w(TAG, "Wi-Fi Direct is not enabled")
+                    AppLogger.w(LogTag.WIFI_DIRECT, "Wi-Fi Direct is not enabled")
                 } else {
-                    Log.d(TAG, "Wi-Fi Direct is enabled")
+                    AppLogger.d(LogTag.WIFI_DIRECT, "Wi-Fi Direct is enabled")
                 }
             }
 
@@ -67,7 +68,5 @@ class WifiDirectBroadcastReceiver(
         }
     }
 
-    companion object {
-        private const val TAG = "WifiDirectReceiver"
-    }
+    companion object
 }

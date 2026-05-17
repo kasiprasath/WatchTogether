@@ -8,8 +8,9 @@ import android.net.wifi.p2p.WifiP2pDevice
 import android.net.wifi.p2p.WifiP2pInfo
 import android.net.wifi.p2p.WifiP2pManager
 import android.os.Looper
-import android.util.Log
 import com.watchtogether.data.model.DeviceInfo
+import com.watchtogether.debug.AppLogger
+import com.watchtogether.debug.LogTag
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.StateFlow
 import kotlinx.coroutines.flow.asStateFlow
@@ -40,7 +41,7 @@ class WifiDirectManager(private val context: Context) {
     val peerListListener = WifiP2pManager.PeerListListener { peerList ->
         val deviceList = peerList.deviceList.map { DeviceInfo.fromWifiP2pDevice(it) }
         _peers.value = deviceList
-        Log.d(TAG, "Peers updated: ${deviceList.size} devices found")
+        AppLogger.d(LogTag.WIFI_DIRECT, "Peers updated: ${deviceList.size} devices found")
     }
 
     val connectionInfoListener = WifiP2pManager.ConnectionInfoListener { info ->
@@ -51,7 +52,7 @@ class WifiDirectManager(private val context: Context) {
             } else {
                 ConnectionState.ConnectedAsClient(info.groupOwnerAddress?.hostAddress ?: "")
             }
-            Log.d(TAG, "Connected: isGroupOwner=${info.isGroupOwner}, address=${info.groupOwnerAddress?.hostAddress}")
+            AppLogger.d(LogTag.WIFI_DIRECT, "Connected: isGroupOwner=${info.isGroupOwner}, address=${info.groupOwnerAddress?.hostAddress}")
         }
     }
 
@@ -74,7 +75,7 @@ class WifiDirectManager(private val context: Context) {
         try {
             receiver?.let { context.unregisterReceiver(it) }
         } catch (e: IllegalArgumentException) {
-            Log.w(TAG, "Receiver already unregistered")
+            AppLogger.w(LogTag.WIFI_DIRECT, "Receiver already unregistered")
         }
     }
 
@@ -83,12 +84,12 @@ class WifiDirectManager(private val context: Context) {
         _isDiscovering.value = true
         manager?.discoverPeers(channel, object : WifiP2pManager.ActionListener {
             override fun onSuccess() {
-                Log.d(TAG, "Discovery started")
+                AppLogger.d(LogTag.WIFI_DIRECT, "Discovery started")
             }
 
             override fun onFailure(reason: Int) {
                 _isDiscovering.value = false
-                Log.e(TAG, "Discovery failed: ${getFailureReason(reason)}")
+                AppLogger.e(LogTag.WIFI_DIRECT, "Discovery failed: ${getFailureReason(reason)}")
             }
         })
     }
@@ -97,12 +98,12 @@ class WifiDirectManager(private val context: Context) {
         manager?.stopPeerDiscovery(channel, object : WifiP2pManager.ActionListener {
             override fun onSuccess() {
                 _isDiscovering.value = false
-                Log.d(TAG, "Discovery stopped")
+                AppLogger.d(LogTag.WIFI_DIRECT, "Discovery stopped")
             }
 
             override fun onFailure(reason: Int) {
                 _isDiscovering.value = false
-                Log.w(TAG, "Stop discovery failed: ${getFailureReason(reason)}")
+                AppLogger.w(LogTag.WIFI_DIRECT, "Stop discovery failed: ${getFailureReason(reason)}")
             }
         })
     }
@@ -116,12 +117,12 @@ class WifiDirectManager(private val context: Context) {
 
         manager?.connect(channel, config, object : WifiP2pManager.ActionListener {
             override fun onSuccess() {
-                Log.d(TAG, "Connection initiated to ${device.name}")
+                AppLogger.d(LogTag.WIFI_DIRECT, "Connection initiated to ${device.name}")
             }
 
             override fun onFailure(reason: Int) {
                 _connectionState.value = ConnectionState.Error("Connection failed: ${getFailureReason(reason)}")
-                Log.e(TAG, "Connection failed: ${getFailureReason(reason)}")
+                AppLogger.e(LogTag.WIFI_DIRECT, "Connection failed: ${getFailureReason(reason)}")
             }
         })
     }
@@ -130,10 +131,10 @@ class WifiDirectManager(private val context: Context) {
         // Cancel any pending invitation first
         manager?.cancelConnect(channel, object : WifiP2pManager.ActionListener {
             override fun onSuccess() {
-                Log.d(TAG, "Pending connect cancelled")
+                AppLogger.d(LogTag.WIFI_DIRECT, "Pending connect cancelled")
             }
             override fun onFailure(reason: Int) {
-                Log.w(TAG, "Cancel connect failed (may not have been connecting): ${getFailureReason(reason)}")
+                AppLogger.w(LogTag.WIFI_DIRECT, "Cancel connect failed (may not have been connecting): ${getFailureReason(reason)}")
             }
         })
 
@@ -142,11 +143,11 @@ class WifiDirectManager(private val context: Context) {
             override fun onSuccess() {
                 _connectionState.value = ConnectionState.Disconnected
                 _connectionInfo.value = null
-                Log.d(TAG, "Disconnected")
+                AppLogger.d(LogTag.WIFI_DIRECT, "Disconnected")
             }
 
             override fun onFailure(reason: Int) {
-                Log.w(TAG, "Remove group failed: ${getFailureReason(reason)}")
+                AppLogger.w(LogTag.WIFI_DIRECT, "Remove group failed: ${getFailureReason(reason)}")
                 // Still reset state so UI isn't stuck
                 _connectionState.value = ConnectionState.Disconnected
                 _connectionInfo.value = null
@@ -184,7 +185,5 @@ class WifiDirectManager(private val context: Context) {
         data class Error(val message: String) : ConnectionState()
     }
 
-    companion object {
-        private const val TAG = "WifiDirectManager"
-    }
+    companion object
 }

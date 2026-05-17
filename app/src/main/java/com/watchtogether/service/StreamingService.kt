@@ -8,12 +8,13 @@ import android.content.pm.ServiceInfo
 import android.os.Binder
 import android.os.Build
 import android.os.IBinder
-import android.util.Log
 import androidx.core.app.NotificationCompat
 import com.watchtogether.R
 import com.watchtogether.app.WatchTogetherApp
 import com.watchtogether.data.model.SyncMessage
 import com.watchtogether.network.server.VideoStreamServer
+import com.watchtogether.debug.AppLogger
+import com.watchtogether.debug.LogTag
 import com.watchtogether.network.sync.SyncServer
 import com.watchtogether.ui.player.PlayerActivity
 import kotlinx.coroutines.CoroutineScope
@@ -50,7 +51,7 @@ class StreamingService : Service() {
 
     override fun onCreate() {
         super.onCreate()
-        Log.d(TAG, "StreamingService created")
+        AppLogger.d(LogTag.STREAM_SERVER, "StreamingService created")
     }
 
     override fun onStartCommand(intent: Intent?, flags: Int, startId: Int): Int {
@@ -79,7 +80,7 @@ class StreamingService : Service() {
         if (syncServer == null) {
             syncServer = SyncServer().apply { startServer() }
         }
-        Log.d(TAG, "Streaming started")
+        AppLogger.d(LogTag.STREAM_SERVER, "Streaming started")
     }
 
     fun stopStreaming() {
@@ -89,7 +90,7 @@ class StreamingService : Service() {
         syncServer = null
         stopForeground(STOP_FOREGROUND_REMOVE)
         stopSelf()
-        Log.d(TAG, "Streaming stopped")
+        AppLogger.d(LogTag.STREAM_SERVER, "Streaming stopped")
     }
 
     fun setVideoPath(path: String) {
@@ -122,11 +123,10 @@ class StreamingService : Service() {
         stopStreaming()
         serviceScope.cancel()
         super.onDestroy()
-        Log.d(TAG, "StreamingService destroyed")
+        AppLogger.d(LogTag.STREAM_SERVER, "StreamingService destroyed")
     }
 
     companion object {
-        private const val TAG = "StreamingService"
         const val NOTIFICATION_ID = 1001
         const val ACTION_START = "com.watchtogether.action.START_STREAMING"
         const val ACTION_STOP = "com.watchtogether.action.STOP_STREAMING"
