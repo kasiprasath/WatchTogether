@@ -28,6 +28,7 @@ class StreamingService : Service() {
 
     private val binder = StreamingBinder()
     private val serviceScope = CoroutineScope(Dispatchers.IO + SupervisorJob())
+    private val syncDispatcher = Dispatchers.IO.limitedParallelism(1)
 
     private var videoServer: VideoStreamServer? = null
     private var syncServer: SyncServer? = null
@@ -137,7 +138,7 @@ class StreamingService : Service() {
             AppLogger.e(LogTag.SOCKET, "FLOW BREAK: broadcastSyncMessage called but sync server is null")
             return
         }
-        serviceScope.launch {
+        serviceScope.launch(syncDispatcher) {
             try {
                 syncServer?.broadcastMessage(message)
             } catch (e: Exception) {

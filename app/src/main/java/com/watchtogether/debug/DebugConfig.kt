@@ -22,7 +22,7 @@ object DebugConfig {
     private var currentMode: Mode = Mode.TEST
 
     private var prefs: SharedPreferences? = null
-    private val listeners = mutableListOf<(Mode) -> Unit>()
+    private val listeners = java.util.concurrent.CopyOnWriteArrayList<(Mode) -> Unit>()
 
     private var isDebugBuild = false
 
