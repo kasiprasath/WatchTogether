@@ -8,6 +8,8 @@ import kotlinx.coroutines.flow.MutableSharedFlow
 import kotlinx.coroutines.flow.SharedFlow
 import kotlinx.coroutines.flow.asSharedFlow
 import java.io.IOException
+import java.util.Timer
+import java.util.TimerTask
 
 class SyncServer(port: Int = DEFAULT_PORT) : NanoWSD(port) {
 
@@ -17,6 +19,8 @@ class SyncServer(port: Int = DEFAULT_PORT) : NanoWSD(port) {
 
     private val _clientConnected = MutableSharedFlow<Boolean>(extraBufferCapacity = 8)
     val clientConnected: SharedFlow<Boolean> = _clientConnected.asSharedFlow()
+
+    private var heartbeatTimer: Timer? = null
 
     override fun openWebSocket(handshake: IHTTPSession): WebSocket {
         val ws = SyncWebSocket(handshake)
@@ -43,6 +47,7 @@ class SyncServer(port: Int = DEFAULT_PORT) : NanoWSD(port) {
     fun startServer() {
         try {
             start(SOCKET_READ_TIMEOUT, false)
+            startHeartbeat()
             AppLogger.i(LogTag.SOCKET, "Sync WebSocket server started on port $listeningPort")
         } catch (e: IOException) {
             AppLogger.e(LogTag.SOCKET, "FLOW BREAK: Sync server failed to start on port $DEFAULT_PORT - port may be in use", e)
@@ -50,7 +55,24 @@ class SyncServer(port: Int = DEFAULT_PORT) : NanoWSD(port) {
         }
     }
 
+    private fun startHeartbeat() {
+        heartbeatTimer?.cancel()
+        heartbeatTimer = Timer("SyncHeartbeat", true).apply {
+            scheduleAtFixedRate(object : TimerTask() {
+                override fun run() {
+                    try {
+                        broadcastMessage(SyncMessage.Heartbeat(System.currentTimeMillis()))
+                    } catch (e: Exception) {
+                        AppLogger.w(LogTag.SOCKET, "Heartbeat failed", e)
+                    }
+                }
+            }, HEARTBEAT_INTERVAL_MS, HEARTBEAT_INTERVAL_MS)
+        }
+    }
+
     fun stopServer() {
+        heartbeatTimer?.cancel()
+        heartbeatTimer = null
         synchronized(connectedClients) {
             connectedClients.forEach { client ->
                 try {
@@ -124,6 +146,7 @@ class SyncServer(port: Int = DEFAULT_PORT) : NanoWSD(port) {
 
     companion object {
         const val DEFAULT_PORT = 8081
-        private const val SOCKET_READ_TIMEOUT = 30000
+        private const val SOCKET_READ_TIMEOUT = 0 // No timeout - heartbeat keeps connection alive
+        private const val HEARTBEAT_INTERVAL_MS = 15000L
     }
 }

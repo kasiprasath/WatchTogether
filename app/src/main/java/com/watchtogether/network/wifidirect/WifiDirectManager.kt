@@ -111,6 +111,22 @@ class WifiDirectManager(private val context: Context) {
     @SuppressLint("MissingPermission")
     fun connectToDevice(device: DeviceInfo) {
         _connectionState.value = ConnectionState.Connecting(device.name)
+
+        // Remove any stale group first to ensure fresh negotiation with invitation popup
+        manager?.removeGroup(channel, object : WifiP2pManager.ActionListener {
+            override fun onSuccess() {
+                AppLogger.d(LogTag.WIFI_DIRECT, "Cleared stale group before connect")
+                initiateConnection(device)
+            }
+            override fun onFailure(reason: Int) {
+                // No existing group — proceed normally
+                initiateConnection(device)
+            }
+        })
+    }
+
+    @SuppressLint("MissingPermission")
+    private fun initiateConnection(device: DeviceInfo) {
         val config = WifiP2pConfig().apply {
             deviceAddress = device.address
             groupOwnerIntent = 15 // Force inviter to be group owner (Host)

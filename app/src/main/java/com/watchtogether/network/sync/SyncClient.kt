@@ -46,6 +46,8 @@ class SyncClient {
         readerJob = scope.launch {
             try {
                 val tcpSocket = Socket(hostAddress, port)
+                tcpSocket.keepAlive = true
+                tcpSocket.soTimeout = 0 // No read timeout - heartbeat keeps connection alive
                 socket = tcpSocket
 
                 val outputStream = tcpSocket.getOutputStream()
