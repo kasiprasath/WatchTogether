@@ -88,17 +88,17 @@ class WifiDirectManager(private val context: Context) {
         _isDiscovering.value = true
         clearPersistentGroups {
             AppLogger.d(LogTag.WIFI_DIRECT, "Persistent groups cleared before discovery")
-        }
-        manager?.discoverPeers(channel, object : WifiP2pManager.ActionListener {
-            override fun onSuccess() {
-                AppLogger.d(LogTag.WIFI_DIRECT, "Discovery started")
-            }
+            manager?.discoverPeers(channel, object : WifiP2pManager.ActionListener {
+                override fun onSuccess() {
+                    AppLogger.d(LogTag.WIFI_DIRECT, "Discovery started")
+                }
 
-            override fun onFailure(reason: Int) {
-                _isDiscovering.value = false
-                AppLogger.e(LogTag.WIFI_DIRECT, "Discovery failed: ${getFailureReason(reason)}")
-            }
-        })
+                override fun onFailure(reason: Int) {
+                    _isDiscovering.value = false
+                    AppLogger.e(LogTag.WIFI_DIRECT, "Discovery failed: ${getFailureReason(reason)}")
+                }
+            })
+        }
     }
 
     fun stopDiscovery() {
