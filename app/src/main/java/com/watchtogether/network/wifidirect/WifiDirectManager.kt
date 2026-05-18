@@ -11,6 +11,7 @@ import android.os.Looper
 import com.watchtogether.data.model.DeviceInfo
 import com.watchtogether.debug.AppLogger
 import com.watchtogether.debug.LogTag
+import java.util.concurrent.atomic.AtomicInteger
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.StateFlow
 import kotlinx.coroutines.flow.asStateFlow
@@ -59,6 +60,9 @@ class WifiDirectManager(private val context: Context) {
     fun initialize() {
         channel = manager?.initialize(context, Looper.getMainLooper(), null)
         receiver = WifiDirectBroadcastReceiver(this, manager, channel)
+        clearPersistentGroups {
+            AppLogger.d(LogTag.WIFI_DIRECT, "Persistent groups cleared on init")
+        }
     }
 
     fun registerReceiver() {
@@ -82,6 +86,9 @@ class WifiDirectManager(private val context: Context) {
     @SuppressLint("MissingPermission")
     fun discoverPeers() {
         _isDiscovering.value = true
+        clearPersistentGroups {
+            AppLogger.d(LogTag.WIFI_DIRECT, "Persistent groups cleared before discovery")
+        }
         manager?.discoverPeers(channel, object : WifiP2pManager.ActionListener {
             override fun onSuccess() {
                 AppLogger.d(LogTag.WIFI_DIRECT, "Discovery started")
@@ -111,18 +118,41 @@ class WifiDirectManager(private val context: Context) {
     @SuppressLint("MissingPermission")
     fun connectToDevice(device: DeviceInfo) {
         _connectionState.value = ConnectionState.Connecting(device.name)
+        AppLogger.d(LogTag.WIFI_DIRECT, "Preparing connection to ${device.name} (${device.address})")
 
-        // Remove any stale group first to ensure fresh negotiation with invitation popup
-        manager?.removeGroup(channel, object : WifiP2pManager.ActionListener {
+        // Step 1: Cancel any pending invitation from a previous attempt
+        manager?.cancelConnect(channel, object : WifiP2pManager.ActionListener {
             override fun onSuccess() {
-                AppLogger.d(LogTag.WIFI_DIRECT, "Cleared stale group before connect")
-                initiateConnection(device)
+                AppLogger.d(LogTag.WIFI_DIRECT, "Cancelled pending connect")
+                removeGroupBeforeConnect(device)
             }
             override fun onFailure(reason: Int) {
-                // No existing group — proceed normally
-                initiateConnection(device)
+                removeGroupBeforeConnect(device)
             }
-        })
+        }) ?: removeGroupBeforeConnect(device)
+    }
+
+    @SuppressLint("MissingPermission")
+    private fun removeGroupBeforeConnect(device: DeviceInfo) {
+        // Step 2: Remove any active Wi-Fi Direct group
+        manager?.removeGroup(channel, object : WifiP2pManager.ActionListener {
+            override fun onSuccess() {
+                AppLogger.d(LogTag.WIFI_DIRECT, "Cleared active group before connect")
+                clearPersistentGroupsBeforeConnect(device)
+            }
+            override fun onFailure(reason: Int) {
+                clearPersistentGroupsBeforeConnect(device)
+            }
+        }) ?: clearPersistentGroupsBeforeConnect(device)
+    }
+
+    private fun clearPersistentGroupsBeforeConnect(device: DeviceInfo) {
+        // Step 3: Delete all persistent/remembered groups so the remote device
+        // always shows an invitation dialog instead of auto-connecting
+        clearPersistentGroups {
+            AppLogger.d(LogTag.WIFI_DIRECT, "Persistent groups cleared, initiating fresh connection to ${device.name}")
+            initiateConnection(device)
+        }
     }
 
     @SuppressLint("MissingPermission")
@@ -187,6 +217,45 @@ class WifiDirectManager(private val context: Context) {
         channel = null
     }
 
+    private fun clearPersistentGroups(onComplete: () -> Unit) {
+        val mgr = manager
+        val ch = channel
+        if (mgr == null || ch == null) {
+            onComplete()
+            return
+        }
+        try {
+            val deletePersistentGroup = WifiP2pManager::class.java.getMethod(
+                "deletePersistentGroup",
+                WifiP2pManager.Channel::class.java,
+                Int::class.javaPrimitiveType,
+                WifiP2pManager.ActionListener::class.java
+            )
+
+            val totalGroups = MAX_PERSISTENT_GROUPS
+            val remaining = AtomicInteger(totalGroups)
+
+            for (netId in 0 until totalGroups) {
+                try {
+                    deletePersistentGroup.invoke(mgr, ch, netId, object : WifiP2pManager.ActionListener {
+                        override fun onSuccess() {
+                            AppLogger.d(LogTag.WIFI_DIRECT, "Deleted persistent group netId=$netId")
+                            if (remaining.decrementAndGet() == 0) onComplete()
+                        }
+                        override fun onFailure(reason: Int) {
+                            if (remaining.decrementAndGet() == 0) onComplete()
+                        }
+                    })
+                } catch (e: Exception) {
+                    if (remaining.decrementAndGet() == 0) onComplete()
+                }
+            }
+        } catch (e: Exception) {
+            AppLogger.w(LogTag.WIFI_DIRECT, "Cannot clear persistent groups: ${e.message}")
+            onComplete()
+        }
+    }
+
     private fun getFailureReason(reason: Int): String = when (reason) {
         WifiP2pManager.P2P_UNSUPPORTED -> "P2P not supported"
         WifiP2pManager.BUSY -> "System busy"
@@ -202,5 +271,7 @@ class WifiDirectManager(private val context: Context) {
         data class Error(val message: String) : ConnectionState()
     }
 
-    companion object
+    companion object {
+        private const val MAX_PERSISTENT_GROUPS = 32
+    }
 }
