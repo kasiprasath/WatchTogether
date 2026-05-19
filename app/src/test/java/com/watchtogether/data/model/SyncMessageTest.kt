@@ -152,4 +152,21 @@ class SyncMessageTest {
         assertNotNull(parsed)
         assertEquals(false, (parsed as SyncMessage.BufferState).isBuffering)
     }
+
+    @Test
+    fun `Disconnect message serializes and deserializes correctly`() {
+        val original = SyncMessage.Disconnect
+        val json = original.toJson()
+        val parsed = SyncMessage.fromJson(json)
+
+        assertNotNull(parsed)
+        assertTrue(parsed is SyncMessage.Disconnect)
+    }
+
+    @Test
+    fun `Disconnect toJson produces correct JSON structure`() {
+        val msg = SyncMessage.Disconnect
+        val json = JSONObject(msg.toJson())
+        assertEquals("disconnect", json.getString("type"))
+    }
 }

@@ -10,6 +10,7 @@ sealed class SyncMessage {
     data object Stop : SyncMessage()
     data class BufferState(val isBuffering: Boolean) : SyncMessage()
     data class Heartbeat(val timestamp: Long) : SyncMessage()
+    data object Disconnect : SyncMessage()
 
     fun toJson(): String {
         val json = JSONObject()
@@ -42,6 +43,9 @@ sealed class SyncMessage {
                 json.put("type", "heartbeat")
                 json.put("timestamp", timestamp)
             }
+            is Disconnect -> {
+                json.put("type", "disconnect")
+            }
         }
         return json.toString()
     }
@@ -61,6 +65,7 @@ sealed class SyncMessage {
                     "stop" -> Stop
                     "buffer" -> BufferState(json.getBoolean("buffering"))
                     "heartbeat" -> Heartbeat(json.getLong("timestamp"))
+                    "disconnect" -> Disconnect
                     else -> null
                 }
             } catch (e: Exception) {

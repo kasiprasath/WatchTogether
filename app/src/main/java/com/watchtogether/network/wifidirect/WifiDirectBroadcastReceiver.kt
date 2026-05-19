@@ -47,9 +47,12 @@ class WifiDirectBroadcastReceiver(
                 if (networkInfo?.isConnected == true) {
                     manager?.requestConnectionInfo(channel, wifiDirectManager.connectionInfoListener)
                 } else {
+                    AppLogger.d(LogTag.WIFI_DIRECT, "Wi-Fi Direct disconnected by remote")
                     wifiDirectManager.updateConnectionState(
                         WifiDirectManager.ConnectionState.Disconnected
                     )
+                    // Clear persistent groups so next connection triggers invitation
+                    wifiDirectManager.clearPersistentGroupsPublic()
                 }
             }
 

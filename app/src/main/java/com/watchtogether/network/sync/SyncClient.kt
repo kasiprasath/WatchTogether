@@ -33,11 +33,13 @@ class SyncClient {
     private var hostAddress: String = ""
     private var port: Int = SyncServer.DEFAULT_PORT
     private var shouldReconnect = false
+    private var reconnectAttempts = 0
 
     fun connect(address: String, syncPort: Int = SyncServer.DEFAULT_PORT) {
         hostAddress = address
         port = syncPort
         shouldReconnect = true
+        reconnectAttempts = 0
         performConnect()
     }
 
@@ -102,8 +104,11 @@ class SyncClient {
             } finally {
                 _isConnected.value = false
                 cleanup()
-                if (shouldReconnect) {
+                if (shouldReconnect && reconnectAttempts < MAX_RECONNECT_ATTEMPTS) {
                     scheduleReconnect()
+                } else if (reconnectAttempts >= MAX_RECONNECT_ATTEMPTS) {
+                    AppLogger.w(LogTag.SOCKET, "Max reconnect attempts ($MAX_RECONNECT_ATTEMPTS) reached, giving up")
+                    shouldReconnect = false
                 }
             }
         }
@@ -234,9 +239,11 @@ class SyncClient {
     private fun scheduleReconnect() {
         reconnectJob?.cancel()
         reconnectJob = scope.launch {
-            delay(RECONNECT_DELAY)
+            reconnectAttempts++
+            val backoffDelay = RECONNECT_DELAY * reconnectAttempts
+            AppLogger.d(LogTag.SOCKET, "Reconnect attempt $reconnectAttempts/$MAX_RECONNECT_ATTEMPTS in ${backoffDelay}ms")
+            delay(backoffDelay)
             if (shouldReconnect) {
-                AppLogger.d(LogTag.SOCKET, "Attempting reconnect...")
                 performConnect()
             }
         }
@@ -260,6 +267,7 @@ class SyncClient {
     }
 
     companion object {
-        private const val RECONNECT_DELAY = 3000L
+        private const val RECONNECT_DELAY = 2000L
+        private const val MAX_RECONNECT_ATTEMPTS = 5
     }
 }

@@ -542,6 +542,12 @@ class PlayerActivity : AppCompatActivity() {
                             if (message.isBuffering) View.VISIBLE else View.GONE
                     }
                     is SyncMessage.Heartbeat -> { /* Keep-alive */ }
+                    is SyncMessage.Disconnect -> {
+                        AppLogger.i(LogTag.PLAYER_SYNC, "Remote device disconnected")
+                        debugOverlayInfo("Remote disconnected — returning to home")
+                        finish()
+                        return@runOnUiThread
+                    }
                 }
                 // Delay resetting isSyncing so ExoPlayer listener callbacks
                 // (dispatched asynchronously) still see isSyncing=true
@@ -613,6 +619,17 @@ class PlayerActivity : AppCompatActivity() {
         window.clearFlags(WindowManager.LayoutParams.FLAG_KEEP_SCREEN_ON)
         binding.debugOverlay.detach()
         mainHandler.removeCallbacksAndMessages(null)
+
+        // Notify the remote side before tearing down
+        try {
+            if (isHost) {
+                streamingService?.broadcastSyncMessage(SyncMessage.Disconnect)
+            } else {
+                syncClient?.sendMessage(SyncMessage.Disconnect)
+            }
+        } catch (e: Exception) {
+            AppLogger.w(LogTag.PLAYER_SYNC, "Failed to send disconnect message", e)
+        }
 
         player?.release()
         player = null
