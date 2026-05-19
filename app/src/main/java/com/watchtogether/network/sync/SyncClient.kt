@@ -257,7 +257,15 @@ class SyncClient {
     fun disconnect() {
         shouldReconnect = false
         _isConnected.value = false
-        sendMessageBlocking(SyncMessage.Disconnect)
+        // Send on a background thread to avoid NetworkOnMainThreadException
+        // when called from Activity.onDestroy() on the main thread
+        try {
+            val sendThread = Thread { sendMessageBlocking(SyncMessage.Disconnect) }
+            sendThread.start()
+            sendThread.join(DISCONNECT_SEND_TIMEOUT_MS)
+        } catch (e: Exception) {
+            AppLogger.w(LogTag.SOCKET, "Failed to send disconnect message", e)
+        }
         cleanup()
     }
 
@@ -275,5 +283,6 @@ class SyncClient {
     companion object {
         private const val RECONNECT_DELAY = 2000L
         private const val MAX_RECONNECT_ATTEMPTS = 5
+        private const val DISCONNECT_SEND_TIMEOUT_MS = 1000L
     }
 }

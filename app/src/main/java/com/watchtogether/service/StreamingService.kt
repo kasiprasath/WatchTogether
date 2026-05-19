@@ -104,9 +104,15 @@ class StreamingService : Service() {
     }
 
     fun stopStreaming() {
-        // Broadcast disconnect to all viewers before stopping servers
+        // Broadcast disconnect on a background thread to avoid
+        // NetworkOnMainThreadException when called from onDestroy/onStartCommand
         try {
-            syncServer?.broadcastMessage(SyncMessage.Disconnect)
+            val server = syncServer
+            if (server != null) {
+                val sendThread = Thread { server.broadcastMessage(SyncMessage.Disconnect) }
+                sendThread.start()
+                sendThread.join(DISCONNECT_SEND_TIMEOUT_MS)
+            }
         } catch (e: Exception) {
             AppLogger.w(LogTag.SOCKET, "Failed to broadcast disconnect before stop", e)
         }
@@ -182,5 +188,6 @@ class StreamingService : Service() {
         const val NOTIFICATION_ID = 1001
         const val ACTION_START = "com.watchtogether.action.START_STREAMING"
         const val ACTION_STOP = "com.watchtogether.action.STOP_STREAMING"
+        private const val DISCONNECT_SEND_TIMEOUT_MS = 1000L
     }
 }
