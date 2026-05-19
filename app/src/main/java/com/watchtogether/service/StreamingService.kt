@@ -104,6 +104,12 @@ class StreamingService : Service() {
     }
 
     fun stopStreaming() {
+        // Broadcast disconnect to all viewers before stopping servers
+        try {
+            syncServer?.broadcastMessage(SyncMessage.Disconnect)
+        } catch (e: Exception) {
+            AppLogger.w(LogTag.SOCKET, "Failed to broadcast disconnect before stop", e)
+        }
         try {
             videoServer?.stopServer()
         } catch (e: Exception) {

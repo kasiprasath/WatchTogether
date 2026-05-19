@@ -620,17 +620,6 @@ class PlayerActivity : AppCompatActivity() {
         binding.debugOverlay.detach()
         mainHandler.removeCallbacksAndMessages(null)
 
-        // Notify the remote side before tearing down
-        try {
-            if (isHost) {
-                streamingService?.broadcastSyncMessage(SyncMessage.Disconnect)
-            } else {
-                syncClient?.sendMessage(SyncMessage.Disconnect)
-            }
-        } catch (e: Exception) {
-            AppLogger.w(LogTag.PLAYER_SYNC, "Failed to send disconnect message", e)
-        }
-
         player?.release()
         player = null
 

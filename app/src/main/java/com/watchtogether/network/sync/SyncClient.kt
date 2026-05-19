@@ -74,6 +74,7 @@ class SyncClient {
                 readHttpResponseHeaders(inputStream)
 
                 _isConnected.value = true
+                reconnectAttempts = 0
                 AppLogger.d(LogTag.SOCKET, "Connected to sync server at $hostAddress:$port")
 
                 // Read loop for WebSocket frames
@@ -177,17 +178,21 @@ class SyncClient {
 
     fun sendMessage(message: SyncMessage) {
         scope.launch {
-            try {
-                val json = message.toJson()
-                val payload = json.toByteArray(Charsets.UTF_8)
-                val frame = createWebSocketFrame(payload)
-                socket?.getOutputStream()?.let { os ->
-                    os.write(frame)
-                    os.flush()
-                }
-            } catch (e: Exception) {
-                AppLogger.e(LogTag.SOCKET, "FLOW BREAK: Failed to send sync message ${message.javaClass.simpleName}", e)
+            sendMessageBlocking(message)
+        }
+    }
+
+    private fun sendMessageBlocking(message: SyncMessage) {
+        try {
+            val json = message.toJson()
+            val payload = json.toByteArray(Charsets.UTF_8)
+            val frame = createWebSocketFrame(payload)
+            socket?.getOutputStream()?.let { os ->
+                os.write(frame)
+                os.flush()
             }
+        } catch (e: Exception) {
+            AppLogger.e(LogTag.SOCKET, "FLOW BREAK: Failed to send sync message ${message.javaClass.simpleName}", e)
         }
     }
 
@@ -252,6 +257,7 @@ class SyncClient {
     fun disconnect() {
         shouldReconnect = false
         _isConnected.value = false
+        sendMessageBlocking(SyncMessage.Disconnect)
         cleanup()
     }
 
