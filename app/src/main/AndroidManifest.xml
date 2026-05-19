@@ -59,6 +59,11 @@
             android:theme="@style/Theme.WatchTogether" />
 
         <activity
+            android:name=".ui.lobby.LobbyActivity"
+            android:configChanges="orientation|screenSize|screenLayout|keyboardHidden"
+            android:theme="@style/Theme.WatchTogether" />
+
+        <activity
             android:name=".ui.player.PlayerActivity"
             android:configChanges="orientation|screenSize|screenLayout|keyboardHidden"
             android:theme="@style/Theme.WatchTogether.Player" />

@@ -130,7 +130,9 @@ class SyncServer(port: Int = DEFAULT_PORT) : NanoWSD(port) {
             if (syncMessage != null) {
                 AppLogger.d(LogTag.SOCKET, "Viewer sync received: ${syncMessage.javaClass.simpleName}")
                 _incomingMessages.tryEmit(syncMessage)
-                relayToOthers(text, this)
+                if (syncMessage !is SyncMessage.Disconnect) {
+                    relayToOthers(text, this)
+                }
             }
         }
 

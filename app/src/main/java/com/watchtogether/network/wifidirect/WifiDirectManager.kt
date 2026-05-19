@@ -191,6 +191,11 @@ class WifiDirectManager(private val context: Context) {
                 _connectionState.value = ConnectionState.Disconnected
                 _connectionInfo.value = null
                 AppLogger.d(LogTag.WIFI_DIRECT, "Disconnected")
+                // Clear persistent groups after disconnect so next connection
+                // always triggers a fresh invitation dialog on both devices
+                clearPersistentGroups {
+                    AppLogger.d(LogTag.WIFI_DIRECT, "Persistent groups cleared after disconnect")
+                }
             }
 
             override fun onFailure(reason: Int) {
@@ -198,8 +203,17 @@ class WifiDirectManager(private val context: Context) {
                 // Still reset state so UI isn't stuck
                 _connectionState.value = ConnectionState.Disconnected
                 _connectionInfo.value = null
+                clearPersistentGroups {
+                    AppLogger.d(LogTag.WIFI_DIRECT, "Persistent groups cleared after disconnect (group removal failed)")
+                }
             }
         })
+    }
+
+    fun clearPersistentGroupsPublic() {
+        clearPersistentGroups {
+            AppLogger.d(LogTag.WIFI_DIRECT, "Persistent groups cleared (public call)")
+        }
     }
 
     fun updateThisDevice(device: WifiP2pDevice) {

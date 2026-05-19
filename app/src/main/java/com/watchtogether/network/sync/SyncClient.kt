@@ -33,11 +33,13 @@ class SyncClient {
     private var hostAddress: String = ""
     private var port: Int = SyncServer.DEFAULT_PORT
     private var shouldReconnect = false
+    private var reconnectAttempts = 0
 
     fun connect(address: String, syncPort: Int = SyncServer.DEFAULT_PORT) {
         hostAddress = address
         port = syncPort
         shouldReconnect = true
+        reconnectAttempts = 0
         performConnect()
     }
 
@@ -72,6 +74,7 @@ class SyncClient {
                 readHttpResponseHeaders(inputStream)
 
                 _isConnected.value = true
+                reconnectAttempts = 0
                 AppLogger.d(LogTag.SOCKET, "Connected to sync server at $hostAddress:$port")
 
                 // Read loop for WebSocket frames
@@ -102,8 +105,11 @@ class SyncClient {
             } finally {
                 _isConnected.value = false
                 cleanup()
-                if (shouldReconnect) {
+                if (shouldReconnect && reconnectAttempts < MAX_RECONNECT_ATTEMPTS) {
                     scheduleReconnect()
+                } else if (reconnectAttempts >= MAX_RECONNECT_ATTEMPTS) {
+                    AppLogger.w(LogTag.SOCKET, "Max reconnect attempts ($MAX_RECONNECT_ATTEMPTS) reached, giving up")
+                    shouldReconnect = false
                 }
             }
         }
@@ -172,17 +178,21 @@ class SyncClient {
 
     fun sendMessage(message: SyncMessage) {
         scope.launch {
-            try {
-                val json = message.toJson()
-                val payload = json.toByteArray(Charsets.UTF_8)
-                val frame = createWebSocketFrame(payload)
-                socket?.getOutputStream()?.let { os ->
-                    os.write(frame)
-                    os.flush()
-                }
-            } catch (e: Exception) {
-                AppLogger.e(LogTag.SOCKET, "FLOW BREAK: Failed to send sync message ${message.javaClass.simpleName}", e)
+            sendMessageBlocking(message)
+        }
+    }
+
+    private fun sendMessageBlocking(message: SyncMessage) {
+        try {
+            val json = message.toJson()
+            val payload = json.toByteArray(Charsets.UTF_8)
+            val frame = createWebSocketFrame(payload)
+            socket?.getOutputStream()?.let { os ->
+                os.write(frame)
+                os.flush()
             }
+        } catch (e: Exception) {
+            AppLogger.e(LogTag.SOCKET, "FLOW BREAK: Failed to send sync message ${message.javaClass.simpleName}", e)
         }
     }
 
@@ -234,15 +244,26 @@ class SyncClient {
     private fun scheduleReconnect() {
         reconnectJob?.cancel()
         reconnectJob = scope.launch {
-            delay(RECONNECT_DELAY)
+            reconnectAttempts++
+            val backoffDelay = RECONNECT_DELAY * reconnectAttempts
+            AppLogger.d(LogTag.SOCKET, "Reconnect attempt $reconnectAttempts/$MAX_RECONNECT_ATTEMPTS in ${backoffDelay}ms")
+            delay(backoffDelay)
             if (shouldReconnect) {
-                AppLogger.d(LogTag.SOCKET, "Attempting reconnect...")
                 performConnect()
             }
         }
     }
 
     fun disconnect() {
+        // Send disconnect before signalling the reader loop to exit,
+        // otherwise the reader's finally block may close the socket first
+        try {
+            val sendThread = Thread { sendMessageBlocking(SyncMessage.Disconnect) }
+            sendThread.start()
+            sendThread.join(DISCONNECT_SEND_TIMEOUT_MS)
+        } catch (e: Exception) {
+            AppLogger.w(LogTag.SOCKET, "Failed to send disconnect message", e)
+        }
         shouldReconnect = false
         _isConnected.value = false
         cleanup()
@@ -260,6 +281,8 @@ class SyncClient {
     }
 
     companion object {
-        private const val RECONNECT_DELAY = 3000L
+        private const val RECONNECT_DELAY = 2000L
+        private const val MAX_RECONNECT_ATTEMPTS = 5
+        private const val DISCONNECT_SEND_TIMEOUT_MS = 100L
     }
 }

@@ -30,6 +30,8 @@ import com.watchtogether.network.sync.SyncClient
 import com.watchtogether.network.sync.SyncServer
 import com.watchtogether.service.StreamingService
 import com.watchtogether.ui.discovery.DiscoveryActivity
+import com.watchtogether.ui.lobby.LobbyActivity
+import com.google.android.material.dialog.MaterialAlertDialogBuilder
 import kotlinx.coroutines.flow.collectLatest
 import kotlinx.coroutines.launch
 import java.io.File
@@ -61,6 +63,10 @@ class PlayerActivity : AppCompatActivity() {
     // Flow breakage detection
     private var videoSelectedReceived = false
     private var playerRetryCount = 0
+    private var countdownRunnable: Runnable? = null
+    private var isNavigatingToLobby = false
+    private var isCountdownActive = false
+    private var skipServiceStop = false
 
     private val serviceConnection = object : ServiceConnection {
         override fun onServiceConnected(name: ComponentName?, service: IBinder?) {
@@ -112,10 +118,10 @@ class PlayerActivity : AppCompatActivity() {
     }
 
     private fun setupUI() {
-        binding.toolbar.setNavigationOnClickListener { finish() }
+        binding.toolbar.setNavigationOnClickListener { handleHostBack() }
         binding.videoTitle.text = videoTitle ?: "WatchTogether"
 
-        binding.btnBack.setOnClickListener { finish() }
+        binding.btnBack.setOnClickListener { handleHostBack() }
 
         val roleText = if (isHost) getString(R.string.role_host) else getString(R.string.role_viewer)
         binding.roleIndicator.text = roleText
@@ -354,6 +360,8 @@ class PlayerActivity : AppCompatActivity() {
                 streamingService?.broadcastSyncMessage(
                     SyncMessage.VideoSelected(path, videoTitle ?: "Unknown")
                 )
+                // Start buffer countdown on host side
+                startHostBufferCountdown()
             }
 
             lifecycleScope.launch {
@@ -385,6 +393,20 @@ class PlayerActivity : AppCompatActivity() {
                             )
                             AppLogger.i(LogTag.PLAYER_SYNC, "Re-broadcast VideoSelected to new client")
                             debugOverlayInfo("Re-sent VideoSelected to new viewer")
+                            // Also broadcast current playback state so viewer that
+                            // reconnected after lobby-to-player transition isn't stuck paused
+                            player?.let { p ->
+                                if (!isCountdownActive) {
+                                    val pos = p.currentPosition
+                                    if (p.playWhenReady) {
+                                        streamingService?.broadcastSyncMessage(SyncMessage.Play(pos))
+                                        AppLogger.i(LogTag.PLAYER_SYNC, "Re-broadcast Play($pos) to new client")
+                                    } else {
+                                        streamingService?.broadcastSyncMessage(SyncMessage.Pause(pos))
+                                        AppLogger.i(LogTag.PLAYER_SYNC, "Re-broadcast Pause($pos) to new client")
+                                    }
+                                }
+                            }
                         }
                     }
                 } catch (e: Exception) {
@@ -528,9 +550,10 @@ class PlayerActivity : AppCompatActivity() {
                                 val mediaItem = MediaItem.fromUri(streamUrl)
                                 player?.setMediaItem(mediaItem)
                                 player?.prepare()
-                                player?.playWhenReady = true
-                                recordSyncAction("play")
-                                debugOverlayInfo("Viewer preparing stream via proxy...")
+                                // Don't auto-play — wait for host's Play sync after countdown
+                                player?.playWhenReady = false
+                                recordSyncAction("pause")
+                                debugOverlayInfo("Viewer preparing stream (buffering)...")
                             } else {
                                 debugOverlayInfo("Already playing, skip re-prepare")
                             }
@@ -542,6 +565,40 @@ class PlayerActivity : AppCompatActivity() {
                             if (message.isBuffering) View.VISIBLE else View.GONE
                     }
                     is SyncMessage.Heartbeat -> { /* Keep-alive */ }
+                    is SyncMessage.Disconnect -> {
+                        if (!isHost && !isNavigatingToLobby) {
+                            AppLogger.i(LogTag.PLAYER_SYNC, "Host disconnected — returning to home")
+                            debugOverlayInfo("Host disconnected — returning to home")
+                            finish()
+                            return@runOnUiThread
+                        }
+                        AppLogger.d(LogTag.PLAYER_SYNC, "Viewer disconnected (host stays active or lobby nav in progress)")
+                    }
+                    is SyncMessage.ReturnToLobby -> {
+                        if (!isHost) {
+                            isNavigatingToLobby = true
+                            AppLogger.i(LogTag.PLAYER_SYNC, "Host returned to video selection — going to lobby")
+                            navigateToLobby()
+                            return@runOnUiThread
+                        }
+                    }
+                    is SyncMessage.BufferCountdown -> {
+                        if (!isHost) {
+                            if (message.secondsRemaining > 0) {
+                                showCountdownOverlay(message.secondsRemaining)
+                            } else {
+                                hideCountdownOverlay()
+                            }
+                        }
+                    }
+                    is SyncMessage.RoleSwapRequest -> {
+                        if (isHost) {
+                            showRoleSwapDialog(message.requesterName)
+                        }
+                    }
+                    is SyncMessage.RoleSwapResponse -> {
+                        // Handled in lobby, not player
+                    }
                 }
                 // Delay resetting isSyncing so ExoPlayer listener callbacks
                 // (dispatched asynchronously) still see isSyncing=true
@@ -598,8 +655,103 @@ class PlayerActivity : AppCompatActivity() {
         if (DebugConfig.isTestMode()) binding.debugOverlay.addError(msg)
     }
 
+    private fun handleHostBack() {
+        if (isHost) {
+            AppLogger.i(LogTag.PLAYER_SYNC, "Host leaving player — sending ReturnToLobby to viewers")
+            broadcastSync(SyncMessage.ReturnToLobby)
+            // Don't stop the streaming service — keep sync server alive so
+            // viewer stays connected in lobby and receives the next VideoSelected.
+            // Mark flag so onDestroy skips the service stop.
+            skipServiceStop = true
+        }
+        finish()
+    }
+
+    private fun startHostBufferCountdown() {
+        isCountdownActive = true
+        isSyncing = true
+        player?.pause()
+        var secondsLeft = BUFFER_COUNTDOWN_SECONDS
+        showCountdownOverlay(secondsLeft)
+        broadcastSync(SyncMessage.BufferCountdown(secondsLeft))
+
+        countdownRunnable?.let { mainHandler.removeCallbacks(it) }
+        val tick = object : Runnable {
+            override fun run() {
+                secondsLeft--
+                if (secondsLeft > 0) {
+                    showCountdownOverlay(secondsLeft)
+                    broadcastSync(SyncMessage.BufferCountdown(secondsLeft))
+                    mainHandler.postDelayed(this, 1000)
+                } else {
+                    isCountdownActive = false
+                    isSyncing = false
+                    hideCountdownOverlay()
+                    broadcastSync(SyncMessage.BufferCountdown(0))
+                    // Broadcast explicit Play so viewer starts in sync
+                    val position = player?.currentPosition ?: 0L
+                    player?.playWhenReady = true
+                    recordSyncAction("play")
+                    broadcastSync(SyncMessage.Play(position))
+                    AppLogger.i(LogTag.PLAYER_SYNC, "Buffer countdown complete — playback started at $position ms")
+                }
+            }
+        }
+        countdownRunnable = tick
+        mainHandler.postDelayed(tick, 1000)
+    }
+
+    private fun showCountdownOverlay(seconds: Int) {
+        runOnUiThread {
+            binding.countdownOverlay.visibility = View.VISIBLE
+            binding.countdownNumber.text = seconds.toString()
+            binding.countdownLabel.text = if (seconds > 0) {
+                getString(R.string.lobby_starting_in, seconds)
+            } else {
+                getString(R.string.lobby_buffering)
+            }
+        }
+    }
+
+    private fun hideCountdownOverlay() {
+        runOnUiThread {
+            binding.countdownOverlay.visibility = View.GONE
+        }
+    }
+
+    private fun navigateToLobby() {
+        val intent = Intent(this, LobbyActivity::class.java).apply {
+            putExtra(DiscoveryActivity.EXTRA_HOST_ADDRESS, hostAddress)
+            putExtra(DiscoveryActivity.EXTRA_IS_HOST, false)
+        }
+        startActivity(intent)
+        finish()
+    }
+
+    private fun showRoleSwapDialog(requesterName: String) {
+        runOnUiThread {
+            MaterialAlertDialogBuilder(this)
+                .setTitle(R.string.lobby_role_swap_title)
+                .setMessage(getString(R.string.lobby_role_swap_message, requesterName))
+                .setPositiveButton(android.R.string.ok) { _, _ ->
+                    broadcastSync(SyncMessage.RoleSwapResponse(accepted = true))
+                    AppLogger.i(LogTag.UI, "Role swap accepted for $requesterName")
+                    // Host becomes viewer — send ReturnToLobby and navigate to lobby
+                    broadcastSync(SyncMessage.ReturnToLobby)
+                    navigateToLobby()
+                }
+                .setNegativeButton(android.R.string.cancel) { _, _ ->
+                    broadcastSync(SyncMessage.RoleSwapResponse(accepted = false))
+                    AppLogger.i(LogTag.UI, "Role swap rejected for $requesterName")
+                }
+                .setCancelable(false)
+                .show()
+        }
+    }
+
     override fun onStop() {
         super.onStop()
+        countdownRunnable?.let { mainHandler.removeCallbacks(it) }
         if (isHost) {
             val position = player?.currentPosition ?: 0L
             isSyncing = true
@@ -632,7 +784,7 @@ class PlayerActivity : AppCompatActivity() {
             isBound = false
         }
 
-        if (isHost) {
+        if (isHost && !skipServiceStop) {
             try {
                 val intent = Intent(this, StreamingService::class.java).apply {
                     action = StreamingService.ACTION_STOP
@@ -654,5 +806,6 @@ class PlayerActivity : AppCompatActivity() {
         private const val SYNC_FLAG_DELAY_MS = 200L
         private const val SYNC_ECHO_WINDOW_MS = 2000L
         private const val MAX_PLAYER_RETRIES = 3
+        private const val BUFFER_COUNTDOWN_SECONDS = 4
     }
 }

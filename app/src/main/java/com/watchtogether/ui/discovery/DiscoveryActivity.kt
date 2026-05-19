@@ -4,13 +4,16 @@ import android.content.Intent
 import android.os.Bundle
 import android.view.View
 import android.widget.Toast
+import androidx.activity.OnBackPressedCallback
 import androidx.activity.result.contract.ActivityResultContracts
 import androidx.activity.viewModels
+import androidx.appcompat.app.AlertDialog
 import androidx.appcompat.app.AppCompatActivity
 import androidx.lifecycle.Lifecycle
 import androidx.lifecycle.lifecycleScope
 import androidx.lifecycle.repeatOnLifecycle
 import androidx.recyclerview.widget.LinearLayoutManager
+import com.google.android.material.dialog.MaterialAlertDialogBuilder
 import com.watchtogether.R
 import com.watchtogether.data.model.DeviceInfo
 import com.watchtogether.databinding.ActivityDiscoveryBinding
@@ -19,6 +22,7 @@ import com.watchtogether.debug.AppLogger
 import com.watchtogether.debug.LogTag
 import com.watchtogether.ui.debug.DebugActivity
 import com.watchtogether.ui.library.VideoLibraryActivity
+import com.watchtogether.ui.lobby.LobbyActivity
 import com.watchtogether.ui.player.PlayerActivity
 import com.watchtogether.util.PermissionHelper
 import kotlinx.coroutines.launch
@@ -30,6 +34,7 @@ class DiscoveryActivity : AppCompatActivity() {
     private lateinit var deviceAdapter: DeviceAdapter
     private lateinit var historyAdapter: HistoryAdapter
     private var hasNavigated = false
+    private var exitDialog: AlertDialog? = null
 
     private val permissionLauncher = registerForActivityResult(
         ActivityResultContracts.RequestMultiplePermissions()
@@ -47,7 +52,30 @@ class DiscoveryActivity : AppCompatActivity() {
         binding = ActivityDiscoveryBinding.inflate(layoutInflater)
         setContentView(binding.root)
         setupUI()
+        setupBackPressHandler()
         observeState()
+    }
+
+    private fun setupBackPressHandler() {
+        onBackPressedDispatcher.addCallback(this, object : OnBackPressedCallback(true) {
+            override fun handleOnBackPressed() {
+                showExitConfirmationDialog()
+            }
+        })
+    }
+
+    private fun showExitConfirmationDialog() {
+        if (exitDialog?.isShowing == true) return
+        exitDialog = MaterialAlertDialogBuilder(this)
+            .setTitle(R.string.exit_dialog_title)
+            .setMessage(R.string.exit_dialog_message)
+            .setNegativeButton(android.R.string.no, null)
+            .setPositiveButton(android.R.string.yes) { _, _ ->
+                AppLogger.d(LogTag.UI, "User confirmed exit")
+                finishAffinity()
+            }
+            .setCancelable(true)
+            .show()
     }
 
     private fun setupUI() {
@@ -163,7 +191,7 @@ class DiscoveryActivity : AppCompatActivity() {
                 binding.progressConnecting.visibility = View.GONE
                 if (!hasNavigated) {
                     hasNavigated = true
-                    navigateToPlayer(isHost = false, hostAddress = state.connectionState.hostAddress)
+                    navigateToLobby(hostAddress = state.connectionState.hostAddress)
                 }
             }
             is WifiDirectManager.ConnectionState.Error -> {
@@ -231,6 +259,13 @@ class DiscoveryActivity : AppCompatActivity() {
     private fun navigateToLibrary(isHost: Boolean, hostAddress: String?) {
         val intent = Intent(this, VideoLibraryActivity::class.java).apply {
             putExtra(EXTRA_IS_HOST, isHost)
+            putExtra(EXTRA_HOST_ADDRESS, hostAddress)
+        }
+        startActivity(intent)
+    }
+
+    private fun navigateToLobby(hostAddress: String) {
+        val intent = Intent(this, LobbyActivity::class.java).apply {
             putExtra(EXTRA_HOST_ADDRESS, hostAddress)
         }
         startActivity(intent)
