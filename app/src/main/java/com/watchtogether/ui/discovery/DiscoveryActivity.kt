@@ -7,6 +7,7 @@ import android.widget.Toast
 import androidx.activity.OnBackPressedCallback
 import androidx.activity.result.contract.ActivityResultContracts
 import androidx.activity.viewModels
+import androidx.appcompat.app.AlertDialog
 import androidx.appcompat.app.AppCompatActivity
 import androidx.lifecycle.Lifecycle
 import androidx.lifecycle.lifecycleScope
@@ -32,6 +33,7 @@ class DiscoveryActivity : AppCompatActivity() {
     private lateinit var deviceAdapter: DeviceAdapter
     private lateinit var historyAdapter: HistoryAdapter
     private var hasNavigated = false
+    private var exitDialog: AlertDialog? = null
 
     private val permissionLauncher = registerForActivityResult(
         ActivityResultContracts.RequestMultiplePermissions()
@@ -62,7 +64,8 @@ class DiscoveryActivity : AppCompatActivity() {
     }
 
     private fun showExitConfirmationDialog() {
-        MaterialAlertDialogBuilder(this)
+        if (exitDialog?.isShowing == true) return
+        exitDialog = MaterialAlertDialogBuilder(this)
             .setTitle(R.string.exit_dialog_title)
             .setMessage(R.string.exit_dialog_message)
             .setNegativeButton(android.R.string.no, null)
