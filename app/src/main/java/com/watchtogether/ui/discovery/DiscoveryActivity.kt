@@ -4,6 +4,7 @@ import android.content.Intent
 import android.os.Bundle
 import android.view.View
 import android.widget.Toast
+import androidx.activity.OnBackPressedCallback
 import androidx.activity.result.contract.ActivityResultContracts
 import androidx.activity.viewModels
 import androidx.appcompat.app.AppCompatActivity
@@ -11,6 +12,7 @@ import androidx.lifecycle.Lifecycle
 import androidx.lifecycle.lifecycleScope
 import androidx.lifecycle.repeatOnLifecycle
 import androidx.recyclerview.widget.LinearLayoutManager
+import com.google.android.material.dialog.MaterialAlertDialogBuilder
 import com.watchtogether.R
 import com.watchtogether.data.model.DeviceInfo
 import com.watchtogether.databinding.ActivityDiscoveryBinding
@@ -47,7 +49,29 @@ class DiscoveryActivity : AppCompatActivity() {
         binding = ActivityDiscoveryBinding.inflate(layoutInflater)
         setContentView(binding.root)
         setupUI()
+        setupBackPressHandler()
         observeState()
+    }
+
+    private fun setupBackPressHandler() {
+        onBackPressedDispatcher.addCallback(this, object : OnBackPressedCallback(true) {
+            override fun handleOnBackPressed() {
+                showExitConfirmationDialog()
+            }
+        })
+    }
+
+    private fun showExitConfirmationDialog() {
+        MaterialAlertDialogBuilder(this)
+            .setTitle(R.string.exit_dialog_title)
+            .setMessage(R.string.exit_dialog_message)
+            .setNegativeButton(android.R.string.no, null)
+            .setPositiveButton(android.R.string.yes) { _, _ ->
+                AppLogger.d(LogTag.UI, "User confirmed exit")
+                finishAffinity()
+            }
+            .setCancelable(true)
+            .show()
     }
 
     private fun setupUI() {

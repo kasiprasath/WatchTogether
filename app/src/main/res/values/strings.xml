@@ -21,6 +21,10 @@
     <string name="unknown_device">Unknown device</string>
     <string name="no_device_connected">No device connected. Connect to a device first.</string>
 
+    <!-- Exit Dialog -->
+    <string name="exit_dialog_title">Exit</string>
+    <string name="exit_dialog_message">Are you sure you want to exit?</string>
+
     <!-- Video Library -->
     <string name="video_library">Video Library</string>
     <string name="all_videos">All</string>
