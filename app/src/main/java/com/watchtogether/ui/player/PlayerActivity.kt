@@ -64,6 +64,9 @@ class PlayerActivity : AppCompatActivity() {
     private var videoSelectedReceived = false
     private var playerRetryCount = 0
     private var countdownRunnable: Runnable? = null
+    private var isNavigatingToLobby = false
+    private var isCountdownActive = false
+    private var skipServiceStop = false
 
     private val serviceConnection = object : ServiceConnection {
         override fun onServiceConnected(name: ComponentName?, service: IBinder?) {
@@ -533,9 +536,10 @@ class PlayerActivity : AppCompatActivity() {
                                 val mediaItem = MediaItem.fromUri(streamUrl)
                                 player?.setMediaItem(mediaItem)
                                 player?.prepare()
-                                player?.playWhenReady = true
-                                recordSyncAction("play")
-                                debugOverlayInfo("Viewer preparing stream via proxy...")
+                                // Don't auto-play — wait for host's Play sync after countdown
+                                player?.playWhenReady = false
+                                recordSyncAction("pause")
+                                debugOverlayInfo("Viewer preparing stream (buffering)...")
                             } else {
                                 debugOverlayInfo("Already playing, skip re-prepare")
                             }
@@ -548,16 +552,17 @@ class PlayerActivity : AppCompatActivity() {
                     }
                     is SyncMessage.Heartbeat -> { /* Keep-alive */ }
                     is SyncMessage.Disconnect -> {
-                        if (!isHost) {
+                        if (!isHost && !isNavigatingToLobby) {
                             AppLogger.i(LogTag.PLAYER_SYNC, "Host disconnected — returning to home")
                             debugOverlayInfo("Host disconnected — returning to home")
                             finish()
                             return@runOnUiThread
                         }
-                        AppLogger.d(LogTag.PLAYER_SYNC, "Viewer disconnected (host stays active)")
+                        AppLogger.d(LogTag.PLAYER_SYNC, "Viewer disconnected (host stays active or lobby nav in progress)")
                     }
                     is SyncMessage.ReturnToLobby -> {
                         if (!isHost) {
+                            isNavigatingToLobby = true
                             AppLogger.i(LogTag.PLAYER_SYNC, "Host returned to video selection — going to lobby")
                             navigateToLobby()
                             return@runOnUiThread
@@ -565,7 +570,11 @@ class PlayerActivity : AppCompatActivity() {
                     }
                     is SyncMessage.BufferCountdown -> {
                         if (!isHost) {
-                            showCountdownOverlay(message.secondsRemaining)
+                            if (message.secondsRemaining > 0) {
+                                showCountdownOverlay(message.secondsRemaining)
+                            } else {
+                                hideCountdownOverlay()
+                            }
                         }
                     }
                     is SyncMessage.RoleSwapRequest -> {
@@ -636,11 +645,17 @@ class PlayerActivity : AppCompatActivity() {
         if (isHost) {
             AppLogger.i(LogTag.PLAYER_SYNC, "Host leaving player — sending ReturnToLobby to viewers")
             broadcastSync(SyncMessage.ReturnToLobby)
+            // Don't stop the streaming service — keep sync server alive so
+            // viewer stays connected in lobby and receives the next VideoSelected.
+            // Mark flag so onDestroy skips the service stop.
+            skipServiceStop = true
         }
         finish()
     }
 
     private fun startHostBufferCountdown() {
+        isCountdownActive = true
+        isSyncing = true
         player?.pause()
         var secondsLeft = BUFFER_COUNTDOWN_SECONDS
         showCountdownOverlay(secondsLeft)
@@ -655,10 +670,16 @@ class PlayerActivity : AppCompatActivity() {
                     broadcastSync(SyncMessage.BufferCountdown(secondsLeft))
                     mainHandler.postDelayed(this, 1000)
                 } else {
+                    isCountdownActive = false
+                    isSyncing = false
                     hideCountdownOverlay()
                     broadcastSync(SyncMessage.BufferCountdown(0))
+                    // Broadcast explicit Play so viewer starts in sync
+                    val position = player?.currentPosition ?: 0L
                     player?.playWhenReady = true
-                    AppLogger.i(LogTag.PLAYER_SYNC, "Buffer countdown complete — playback started")
+                    recordSyncAction("play")
+                    broadcastSync(SyncMessage.Play(position))
+                    AppLogger.i(LogTag.PLAYER_SYNC, "Buffer countdown complete — playback started at $position ms")
                 }
             }
         }
@@ -749,7 +770,7 @@ class PlayerActivity : AppCompatActivity() {
             isBound = false
         }
 
-        if (isHost) {
+        if (isHost && !skipServiceStop) {
             try {
                 val intent = Intent(this, StreamingService::class.java).apply {
                     action = StreamingService.ACTION_STOP

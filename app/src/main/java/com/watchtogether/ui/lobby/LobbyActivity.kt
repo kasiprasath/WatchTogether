@@ -7,12 +7,17 @@ import android.os.Looper
 import android.view.View
 import android.widget.Toast
 import androidx.appcompat.app.AppCompatActivity
+import androidx.media3.common.MediaItem
+import androidx.media3.common.Player
+import androidx.media3.exoplayer.ExoPlayer
 import com.google.android.material.dialog.MaterialAlertDialogBuilder
 import com.watchtogether.R
 import com.watchtogether.data.model.SyncMessage
 import com.watchtogether.databinding.ActivityLobbyBinding
 import com.watchtogether.debug.AppLogger
 import com.watchtogether.debug.LogTag
+import com.watchtogether.network.server.StreamProxy
+import com.watchtogether.network.server.VideoStreamServer
 import com.watchtogether.network.sync.SyncClient
 import com.watchtogether.network.sync.SyncServer
 import com.watchtogether.ui.discovery.DiscoveryActivity
@@ -34,6 +39,12 @@ class LobbyActivity : AppCompatActivity() {
     private val scope = CoroutineScope(SupervisorJob() + Dispatchers.Main)
     private var countdownRunnable: Runnable? = null
     private var hasNavigatedToPlayer = false
+
+    // Pre-buffering: start loading video data during countdown
+    private var preBufferPlayer: ExoPlayer? = null
+    private var streamProxy: StreamProxy? = null
+    private var proxyPort: Int = 0
+    private var preBufferedBytes: Long = 0
 
     override fun onCreate(savedInstanceState: Bundle?) {
         super.onCreate(savedInstanceState)
@@ -155,6 +166,9 @@ class LobbyActivity : AppCompatActivity() {
         binding.countdownState.visibility = View.VISIBLE
         binding.btnRequestHost.isEnabled = false
 
+        // Start pre-buffering video data from host during countdown
+        startPreBuffering(videoMessage)
+
         var secondsLeft = BUFFER_COUNTDOWN_SECONDS
         binding.countdownNumber.text = secondsLeft.toString()
         binding.countdownLabel.text = getString(R.string.lobby_buffering)
@@ -166,15 +180,73 @@ class LobbyActivity : AppCompatActivity() {
                 secondsLeft--
                 if (secondsLeft > 0) {
                     binding.countdownNumber.text = secondsLeft.toString()
+                    val bufferedKb = preBufferedBytes / 1024
                     binding.countdownLabel.text = getString(R.string.lobby_starting_in, secondsLeft)
+                    AppLogger.d(LogTag.STREAM_SERVER, "Buffer countdown: ${secondsLeft}s, buffered=${bufferedKb}KB")
                     mainHandler.postDelayed(this, 1000)
                 } else {
+                    stopPreBuffering()
                     navigateToPlayer(videoMessage)
                 }
             }
         }
         countdownRunnable = tick
         mainHandler.postDelayed(tick, 1000)
+    }
+
+    @Suppress("UNUSED_PARAMETER")
+    private fun startPreBuffering(videoMessage: SyncMessage.VideoSelected) {
+        val address = hostAddress ?: return
+
+        try {
+            // Start TCP proxy to tunnel HTTP through Wi-Fi Direct
+            streamProxy = StreamProxy(address, VideoStreamServer.DEFAULT_PORT)
+            proxyPort = streamProxy!!.start()
+            AppLogger.i(LogTag.STREAM_SERVER, "Lobby pre-buffer proxy started on localhost:$proxyPort")
+
+            val streamUrl = "http://127.0.0.1:$proxyPort/video"
+
+            // Create a lightweight ExoPlayer to pre-buffer video data
+            preBufferPlayer = ExoPlayer.Builder(this)
+                .build()
+                .apply {
+                    val mediaItem = MediaItem.fromUri(streamUrl)
+                    setMediaItem(mediaItem)
+                    // Prepare but don't play — ExoPlayer downloads data into buffer
+                    playWhenReady = false
+                    prepare()
+
+                    addListener(object : Player.Listener {
+                        override fun onPlaybackStateChanged(playbackState: Int) {
+                            when (playbackState) {
+                                Player.STATE_BUFFERING -> {
+                                    AppLogger.d(LogTag.STREAM_SERVER, "Pre-buffer: loading video data...")
+                                }
+                                Player.STATE_READY -> {
+                                    preBufferedBytes = bufferedPosition
+                                    AppLogger.i(LogTag.STREAM_SERVER, "Pre-buffer: ready, buffered=${preBufferedBytes / 1024}KB")
+                                }
+                                else -> {}
+                            }
+                        }
+                    })
+                }
+        } catch (e: Exception) {
+            AppLogger.e(LogTag.STREAM_SERVER, "Pre-buffer failed to start", e)
+        }
+    }
+
+    private fun stopPreBuffering() {
+        preBufferPlayer?.let { p ->
+            preBufferedBytes = p.bufferedPosition
+            AppLogger.i(LogTag.STREAM_SERVER, "Pre-buffer stopped: buffered=${preBufferedBytes / 1024}KB")
+            p.release()
+        }
+        preBufferPlayer = null
+        // Don't stop streamProxy here — PlayerActivity will create its own
+        // (proxy is bound to specific port, would conflict)
+        streamProxy?.stop()
+        streamProxy = null
     }
 
     private fun showCountdown(seconds: Int) {
@@ -213,6 +285,7 @@ class LobbyActivity : AppCompatActivity() {
         hasNavigatedToPlayer = false
         countdownRunnable?.let { mainHandler.removeCallbacks(it) }
         countdownRunnable = null
+        stopPreBuffering()
         binding.waitingState.visibility = View.VISIBLE
         binding.countdownState.visibility = View.GONE
         binding.btnRequestHost.isEnabled = true
@@ -284,6 +357,7 @@ class LobbyActivity : AppCompatActivity() {
     override fun onDestroy() {
         countdownRunnable?.let { mainHandler.removeCallbacks(it) }
         mainHandler.removeCallbacksAndMessages(null)
+        stopPreBuffering()
         syncClient?.disconnect()
         syncClient = null
         scope.cancel()
