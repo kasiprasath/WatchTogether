@@ -283,6 +283,6 @@ class SyncClient {
     companion object {
         private const val RECONNECT_DELAY = 2000L
         private const val MAX_RECONNECT_ATTEMPTS = 5
-        private const val DISCONNECT_SEND_TIMEOUT_MS = 1000L
+        private const val DISCONNECT_SEND_TIMEOUT_MS = 100L
     }
 }

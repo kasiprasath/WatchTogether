@@ -188,6 +188,6 @@ class StreamingService : Service() {
         const val NOTIFICATION_ID = 1001
         const val ACTION_START = "com.watchtogether.action.START_STREAMING"
         const val ACTION_STOP = "com.watchtogether.action.STOP_STREAMING"
-        private const val DISCONNECT_SEND_TIMEOUT_MS = 1000L
+        private const val DISCONNECT_SEND_TIMEOUT_MS = 100L
     }
 }
