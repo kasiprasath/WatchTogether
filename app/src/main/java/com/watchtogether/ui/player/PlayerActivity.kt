@@ -542,6 +542,15 @@ class PlayerActivity : AppCompatActivity() {
                             if (message.isBuffering) View.VISIBLE else View.GONE
                     }
                     is SyncMessage.Heartbeat -> { /* Keep-alive */ }
+                    is SyncMessage.Disconnect -> {
+                        if (!isHost) {
+                            AppLogger.i(LogTag.PLAYER_SYNC, "Host disconnected — returning to home")
+                            debugOverlayInfo("Host disconnected — returning to home")
+                            finish()
+                            return@runOnUiThread
+                        }
+                        AppLogger.d(LogTag.PLAYER_SYNC, "Viewer disconnected (host stays active)")
+                    }
                 }
                 // Delay resetting isSyncing so ExoPlayer listener callbacks
                 // (dispatched asynchronously) still see isSyncing=true
