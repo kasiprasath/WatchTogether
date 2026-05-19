@@ -169,4 +169,96 @@ class SyncMessageTest {
         val json = JSONObject(msg.toJson())
         assertEquals("disconnect", json.getString("type"))
     }
+
+    @Test
+    fun `ReturnToLobby message serializes and deserializes correctly`() {
+        val original = SyncMessage.ReturnToLobby
+        val json = original.toJson()
+        val parsed = SyncMessage.fromJson(json)
+
+        assertNotNull(parsed)
+        assertTrue(parsed is SyncMessage.ReturnToLobby)
+    }
+
+    @Test
+    fun `ReturnToLobby toJson produces correct JSON structure`() {
+        val msg = SyncMessage.ReturnToLobby
+        val json = JSONObject(msg.toJson())
+        assertEquals("return_to_lobby", json.getString("type"))
+    }
+
+    @Test
+    fun `BufferCountdown message serializes and deserializes correctly`() {
+        val original = SyncMessage.BufferCountdown(secondsRemaining = 4)
+        val json = original.toJson()
+        val parsed = SyncMessage.fromJson(json)
+
+        assertNotNull(parsed)
+        assertTrue(parsed is SyncMessage.BufferCountdown)
+        assertEquals(4, (parsed as SyncMessage.BufferCountdown).secondsRemaining)
+    }
+
+    @Test
+    fun `BufferCountdown toJson produces correct JSON structure`() {
+        val msg = SyncMessage.BufferCountdown(3)
+        val json = JSONObject(msg.toJson())
+        assertEquals("buffer_countdown", json.getString("type"))
+        assertEquals(3, json.getInt("seconds"))
+    }
+
+    @Test
+    fun `BufferCountdown with zero seconds`() {
+        val original = SyncMessage.BufferCountdown(secondsRemaining = 0)
+        val parsed = SyncMessage.fromJson(original.toJson())
+        assertNotNull(parsed)
+        assertEquals(0, (parsed as SyncMessage.BufferCountdown).secondsRemaining)
+    }
+
+    @Test
+    fun `RoleSwapRequest message serializes and deserializes correctly`() {
+        val original = SyncMessage.RoleSwapRequest(requesterName = "Pixel 7")
+        val json = original.toJson()
+        val parsed = SyncMessage.fromJson(json)
+
+        assertNotNull(parsed)
+        assertTrue(parsed is SyncMessage.RoleSwapRequest)
+        assertEquals("Pixel 7", (parsed as SyncMessage.RoleSwapRequest).requesterName)
+    }
+
+    @Test
+    fun `RoleSwapRequest toJson produces correct JSON structure`() {
+        val msg = SyncMessage.RoleSwapRequest("Samsung Galaxy S24")
+        val json = JSONObject(msg.toJson())
+        assertEquals("role_swap_request", json.getString("type"))
+        assertEquals("Samsung Galaxy S24", json.getString("requester"))
+    }
+
+    @Test
+    fun `RoleSwapResponse accepted serializes and deserializes correctly`() {
+        val original = SyncMessage.RoleSwapResponse(accepted = true)
+        val json = original.toJson()
+        val parsed = SyncMessage.fromJson(json)
+
+        assertNotNull(parsed)
+        assertTrue(parsed is SyncMessage.RoleSwapResponse)
+        assertEquals(true, (parsed as SyncMessage.RoleSwapResponse).accepted)
+    }
+
+    @Test
+    fun `RoleSwapResponse rejected serializes and deserializes correctly`() {
+        val original = SyncMessage.RoleSwapResponse(accepted = false)
+        val parsed = SyncMessage.fromJson(original.toJson())
+
+        assertNotNull(parsed)
+        assertTrue(parsed is SyncMessage.RoleSwapResponse)
+        assertEquals(false, (parsed as SyncMessage.RoleSwapResponse).accepted)
+    }
+
+    @Test
+    fun `RoleSwapResponse toJson produces correct JSON structure`() {
+        val msg = SyncMessage.RoleSwapResponse(true)
+        val json = JSONObject(msg.toJson())
+        assertEquals("role_swap_response", json.getString("type"))
+        assertEquals(true, json.getBoolean("accepted"))
+    }
 }

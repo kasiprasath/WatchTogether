@@ -80,6 +80,36 @@
 
     </LinearLayout>
 
+    <!-- Buffer Countdown Overlay -->
+    <LinearLayout
+        android:id="@+id/countdownOverlay"
+        android:layout_width="match_parent"
+        android:layout_height="match_parent"
+        android:orientation="vertical"
+        android:gravity="center"
+        android:background="#CC000000"
+        android:visibility="gone">
+
+        <TextView
+            android:id="@+id/countdownNumber"
+            android:layout_width="wrap_content"
+            android:layout_height="wrap_content"
+            android:textSize="96sp"
+            android:textColor="@android:color/white"
+            android:textStyle="bold"
+            tools:text="4" />
+
+        <TextView
+            android:id="@+id/countdownLabel"
+            android:layout_width="wrap_content"
+            android:layout_height="wrap_content"
+            android:layout_marginTop="8dp"
+            android:textColor="#B3FFFFFF"
+            android:textAppearance="?attr/textAppearanceBodyLarge"
+            android:text="@string/lobby_buffering" />
+
+    </LinearLayout>
+
     <!-- Buffering Indicator -->
     <ProgressBar
         android:id="@+id/bufferingIndicator"

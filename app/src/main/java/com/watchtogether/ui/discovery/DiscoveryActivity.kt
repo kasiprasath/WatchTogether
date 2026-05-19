@@ -9,7 +9,6 @@ import androidx.activity.result.contract.ActivityResultContracts
 import androidx.activity.viewModels
 import androidx.appcompat.app.AlertDialog
 import androidx.appcompat.app.AppCompatActivity
-import androidx.core.content.ContextCompat
 import androidx.lifecycle.Lifecycle
 import androidx.lifecycle.lifecycleScope
 import androidx.lifecycle.repeatOnLifecycle
@@ -23,6 +22,7 @@ import com.watchtogether.debug.AppLogger
 import com.watchtogether.debug.LogTag
 import com.watchtogether.ui.debug.DebugActivity
 import com.watchtogether.ui.library.VideoLibraryActivity
+import com.watchtogether.ui.lobby.LobbyActivity
 import com.watchtogether.ui.player.PlayerActivity
 import com.watchtogether.util.PermissionHelper
 import kotlinx.coroutines.launch
@@ -149,64 +149,60 @@ class DiscoveryActivity : AppCompatActivity() {
         when (state.connectionState) {
             is WifiDirectManager.ConnectionState.Disconnected -> {
                 binding.connectionStatus.text = getString(R.string.status_disconnected)
+                binding.connectionStatus.setTextColor(getColor(R.color.status_disconnected))
                 binding.connectedDeviceName.visibility = View.GONE
                 binding.connectionCardTitle.text = getString(R.string.app_name)
                 binding.btnDisconnect.visibility = View.GONE
                 binding.btnHost.visibility = View.VISIBLE
                 binding.btnScan.visibility = View.VISIBLE
                 binding.progressConnecting.visibility = View.GONE
-                binding.statusDot.visibility = View.VISIBLE
-                binding.statusDot.backgroundTintList = ContextCompat.getColorStateList(this, R.color.status_disconnected)
                 hasNavigated = false
             }
             is WifiDirectManager.ConnectionState.Connecting -> {
                 binding.connectionStatus.text = getString(R.string.status_connecting, state.connectionState.deviceName)
+                binding.connectionStatus.setTextColor(getColor(R.color.status_connecting))
                 binding.connectedDeviceName.visibility = View.GONE
                 binding.connectionCardTitle.text = getString(R.string.app_name)
                 binding.btnDisconnect.visibility = View.VISIBLE
                 binding.btnHost.visibility = View.GONE
                 binding.btnScan.visibility = View.GONE
                 binding.progressConnecting.visibility = View.VISIBLE
-                binding.statusDot.visibility = View.GONE
             }
             is WifiDirectManager.ConnectionState.ConnectedAsHost -> {
                 binding.connectionCardTitle.text = getString(R.string.status_hosting)
                 binding.connectionStatus.text = getString(R.string.connected_device_info)
+                binding.connectionStatus.setTextColor(getColor(R.color.status_connected))
                 binding.connectedDeviceName.visibility = View.VISIBLE
                 binding.connectedDeviceName.text = state.connectedDeviceName ?: getString(R.string.unknown_device)
                 binding.btnDisconnect.visibility = View.VISIBLE
                 binding.btnHost.visibility = View.VISIBLE
                 binding.btnScan.visibility = View.GONE
                 binding.progressConnecting.visibility = View.GONE
-                binding.statusDot.visibility = View.VISIBLE
-                binding.statusDot.backgroundTintList = ContextCompat.getColorStateList(this, R.color.status_connected)
             }
             is WifiDirectManager.ConnectionState.ConnectedAsClient -> {
                 binding.connectionCardTitle.text = getString(R.string.status_connected)
                 binding.connectionStatus.text = getString(R.string.connected_device_info)
+                binding.connectionStatus.setTextColor(getColor(R.color.status_connected))
                 binding.connectedDeviceName.visibility = View.VISIBLE
                 binding.connectedDeviceName.text = state.connectedDeviceName ?: getString(R.string.unknown_device)
                 binding.btnDisconnect.visibility = View.VISIBLE
                 binding.btnHost.visibility = View.GONE
                 binding.btnScan.visibility = View.GONE
                 binding.progressConnecting.visibility = View.GONE
-                binding.statusDot.visibility = View.VISIBLE
-                binding.statusDot.backgroundTintList = ContextCompat.getColorStateList(this, R.color.status_connected)
                 if (!hasNavigated) {
                     hasNavigated = true
-                    navigateToPlayer(isHost = false, hostAddress = state.connectionState.hostAddress)
+                    navigateToLobby(hostAddress = state.connectionState.hostAddress)
                 }
             }
             is WifiDirectManager.ConnectionState.Error -> {
                 binding.connectionStatus.text = state.connectionState.message
+                binding.connectionStatus.setTextColor(getColor(R.color.status_error))
                 binding.connectedDeviceName.visibility = View.GONE
                 binding.connectionCardTitle.text = getString(R.string.app_name)
                 binding.btnDisconnect.visibility = View.GONE
                 binding.btnHost.visibility = View.VISIBLE
                 binding.btnScan.visibility = View.VISIBLE
                 binding.progressConnecting.visibility = View.GONE
-                binding.statusDot.visibility = View.VISIBLE
-                binding.statusDot.backgroundTintList = ContextCompat.getColorStateList(this, R.color.status_error)
             }
         }
 
@@ -263,6 +259,13 @@ class DiscoveryActivity : AppCompatActivity() {
     private fun navigateToLibrary(isHost: Boolean, hostAddress: String?) {
         val intent = Intent(this, VideoLibraryActivity::class.java).apply {
             putExtra(EXTRA_IS_HOST, isHost)
+            putExtra(EXTRA_HOST_ADDRESS, hostAddress)
+        }
+        startActivity(intent)
+    }
+
+    private fun navigateToLobby(hostAddress: String) {
+        val intent = Intent(this, LobbyActivity::class.java).apply {
             putExtra(EXTRA_HOST_ADDRESS, hostAddress)
         }
         startActivity(intent)
