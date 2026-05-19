@@ -1,7 +1,8 @@
 package com.watchtogether.network.sync
 
-import android.util.Log
 import com.watchtogether.data.model.SyncMessage
+import com.watchtogether.debug.AppLogger
+import com.watchtogether.debug.LogTag
 import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.Job
@@ -45,6 +46,8 @@ class SyncClient {
         readerJob = scope.launch {
             try {
                 val tcpSocket = Socket(hostAddress, port)
+                tcpSocket.keepAlive = true
+                tcpSocket.soTimeout = 0 // No read timeout - heartbeat keeps connection alive
                 socket = tcpSocket
 
                 val outputStream = tcpSocket.getOutputStream()
@@ -69,7 +72,7 @@ class SyncClient {
                 readHttpResponseHeaders(inputStream)
 
                 _isConnected.value = true
-                Log.d(TAG, "Connected to sync server at $hostAddress:$port")
+                AppLogger.d(LogTag.SOCKET, "Connected to sync server at $hostAddress:$port")
 
                 // Read loop for WebSocket frames
                 while (_isConnected.value) {
@@ -83,13 +86,19 @@ class SyncClient {
                         }
                     } catch (e: Exception) {
                         if (_isConnected.value) {
-                            Log.w(TAG, "Error reading frame", e)
+                            AppLogger.e(LogTag.SOCKET, "FLOW BREAK: Frame read failed - connection may be closed", e)
                             break
                         }
                     }
                 }
+            } catch (e: java.net.ConnectException) {
+                AppLogger.e(LogTag.SOCKET, "FLOW BREAK: Cannot reach host at $hostAddress:$port - connection refused", e)
+            } catch (e: java.net.SocketTimeoutException) {
+                AppLogger.e(LogTag.SOCKET, "FLOW BREAK: Connection to $hostAddress:$port timed out", e)
+            } catch (e: java.net.UnknownHostException) {
+                AppLogger.e(LogTag.SOCKET, "FLOW BREAK: Unknown host $hostAddress", e)
             } catch (e: Exception) {
-                Log.e(TAG, "Connection error", e)
+                AppLogger.e(LogTag.SOCKET, "FLOW BREAK: Sync connection failed to $hostAddress:$port", e)
             } finally {
                 _isConnected.value = false
                 cleanup()
@@ -172,7 +181,7 @@ class SyncClient {
                     os.flush()
                 }
             } catch (e: Exception) {
-                Log.e(TAG, "Failed to send message", e)
+                AppLogger.e(LogTag.SOCKET, "FLOW BREAK: Failed to send sync message ${message.javaClass.simpleName}", e)
             }
         }
     }
@@ -227,7 +236,7 @@ class SyncClient {
         reconnectJob = scope.launch {
             delay(RECONNECT_DELAY)
             if (shouldReconnect) {
-                Log.d(TAG, "Attempting reconnect...")
+                AppLogger.d(LogTag.SOCKET, "Attempting reconnect...")
                 performConnect()
             }
         }
@@ -245,13 +254,12 @@ class SyncClient {
             reconnectJob?.cancel()
             socket?.close()
         } catch (e: Exception) {
-            Log.w(TAG, "Cleanup error", e)
+            AppLogger.w(LogTag.SOCKET, "Cleanup error", e)
         }
         socket = null
     }
 
     companion object {
-        private const val TAG = "SyncClient"
         private const val RECONNECT_DELAY = 3000L
     }
 }

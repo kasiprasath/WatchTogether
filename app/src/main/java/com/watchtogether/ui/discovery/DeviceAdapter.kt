@@ -42,11 +42,12 @@ class DeviceAdapter(
                 binding.root.context.getColor(statusColor)
             )
 
-            binding.root.isEnabled = device.isAvailable
-            binding.root.alpha = if (device.isAvailable) 1.0f else 0.5f
+            val canConnect = device.isAvailable || device.isInvited
+            binding.root.isEnabled = canConnect
+            binding.root.alpha = if (canConnect) 1.0f else 0.5f
 
             binding.root.setOnClickListener {
-                if (device.isAvailable) {
+                if (canConnect) {
                     onDeviceClick(device)
                 }
             }

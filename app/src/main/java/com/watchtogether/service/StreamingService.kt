@@ -8,12 +8,13 @@ import android.content.pm.ServiceInfo
 import android.os.Binder
 import android.os.Build
 import android.os.IBinder
-import android.util.Log
 import androidx.core.app.NotificationCompat
 import com.watchtogether.R
 import com.watchtogether.app.WatchTogetherApp
 import com.watchtogether.data.model.SyncMessage
 import com.watchtogether.network.server.VideoStreamServer
+import com.watchtogether.debug.AppLogger
+import com.watchtogether.debug.LogTag
 import com.watchtogether.network.sync.SyncServer
 import com.watchtogether.ui.player.PlayerActivity
 import kotlinx.coroutines.CoroutineScope
@@ -21,11 +22,13 @@ import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.SupervisorJob
 import kotlinx.coroutines.cancel
 import kotlinx.coroutines.flow.SharedFlow
+import kotlinx.coroutines.launch
 
 class StreamingService : Service() {
 
     private val binder = StreamingBinder()
     private val serviceScope = CoroutineScope(Dispatchers.IO + SupervisorJob())
+    private val syncDispatcher = Dispatchers.IO.limitedParallelism(1)
 
     private var videoServer: VideoStreamServer? = null
     private var syncServer: SyncServer? = null
@@ -50,7 +53,7 @@ class StreamingService : Service() {
 
     override fun onCreate() {
         super.onCreate()
-        Log.d(TAG, "StreamingService created")
+        AppLogger.d(LogTag.STREAM_SERVER, "StreamingService created")
     }
 
     override fun onStartCommand(intent: Intent?, flags: Int, startId: Int): Int {
@@ -62,42 +65,86 @@ class StreamingService : Service() {
     }
 
     fun startStreaming() {
-        val notification = createNotification()
-        if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.Q) {
-            startForeground(
-                NOTIFICATION_ID,
-                notification,
-                ServiceInfo.FOREGROUND_SERVICE_TYPE_CONNECTED_DEVICE
-            )
-        } else {
-            startForeground(NOTIFICATION_ID, notification)
+        try {
+            val notification = createNotification()
+            if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.Q) {
+                startForeground(
+                    NOTIFICATION_ID,
+                    notification,
+                    ServiceInfo.FOREGROUND_SERVICE_TYPE_CONNECTED_DEVICE
+                )
+            } else {
+                startForeground(NOTIFICATION_ID, notification)
+            }
+        } catch (e: Exception) {
+            AppLogger.e(LogTag.STREAM_SERVER, "FLOW BREAK: Failed to start foreground service", e)
+            stopSelf()
+            return
         }
 
-        if (videoServer == null) {
-            videoServer = VideoStreamServer().apply { startServer() }
+        try {
+            if (videoServer == null) {
+                videoServer = VideoStreamServer().apply { startServer() }
+            }
+            AppLogger.i(LogTag.STREAM_SERVER, "Video server started on port ${VideoStreamServer.DEFAULT_PORT}")
+        } catch (e: Exception) {
+            AppLogger.e(LogTag.STREAM_SERVER, "FLOW BREAK: Video server failed to start on port ${VideoStreamServer.DEFAULT_PORT}", e)
         }
-        if (syncServer == null) {
-            syncServer = SyncServer().apply { startServer() }
+
+        try {
+            if (syncServer == null) {
+                syncServer = SyncServer().apply { startServer() }
+            }
+            AppLogger.i(LogTag.SOCKET, "Sync server started on port ${SyncServer.DEFAULT_PORT}")
+        } catch (e: Exception) {
+            AppLogger.e(LogTag.SOCKET, "FLOW BREAK: Sync server failed to start on port ${SyncServer.DEFAULT_PORT}", e)
         }
-        Log.d(TAG, "Streaming started")
+
+        AppLogger.i(LogTag.STREAM_SERVER, "Streaming started (video=${videoServer != null}, sync=${syncServer != null})")
     }
 
     fun stopStreaming() {
-        videoServer?.stopServer()
+        try {
+            videoServer?.stopServer()
+        } catch (e: Exception) {
+            AppLogger.w(LogTag.STREAM_SERVER, "Error stopping video server", e)
+        }
         videoServer = null
-        syncServer?.stopServer()
+        try {
+            syncServer?.stopServer()
+        } catch (e: Exception) {
+            AppLogger.w(LogTag.SOCKET, "Error stopping sync server", e)
+        }
         syncServer = null
-        stopForeground(STOP_FOREGROUND_REMOVE)
-        stopSelf()
-        Log.d(TAG, "Streaming stopped")
+        try {
+            stopForeground(STOP_FOREGROUND_REMOVE)
+            stopSelf()
+        } catch (e: Exception) {
+            AppLogger.w(LogTag.STREAM_SERVER, "Error stopping foreground service", e)
+        }
+        AppLogger.d(LogTag.STREAM_SERVER, "Streaming stopped")
     }
 
     fun setVideoPath(path: String) {
+        if (videoServer == null) {
+            AppLogger.e(LogTag.STREAM_SERVER, "FLOW BREAK: setVideoPath called but video server is null")
+            return
+        }
         videoServer?.setVideoPath(path)
     }
 
     fun broadcastSyncMessage(message: SyncMessage) {
-        syncServer?.broadcastMessage(message)
+        if (syncServer == null) {
+            AppLogger.e(LogTag.SOCKET, "FLOW BREAK: broadcastSyncMessage called but sync server is null")
+            return
+        }
+        serviceScope.launch(syncDispatcher) {
+            try {
+                syncServer?.broadcastMessage(message)
+            } catch (e: Exception) {
+                AppLogger.e(LogTag.SOCKET, "FLOW BREAK: broadcastSyncMessage failed", e)
+            }
+        }
     }
 
     private fun createNotification(): Notification {
@@ -122,11 +169,10 @@ class StreamingService : Service() {
         stopStreaming()
         serviceScope.cancel()
         super.onDestroy()
-        Log.d(TAG, "StreamingService destroyed")
+        AppLogger.d(LogTag.STREAM_SERVER, "StreamingService destroyed")
     }
 
     companion object {
-        private const val TAG = "StreamingService"
         const val NOTIFICATION_ID = 1001
         const val ACTION_START = "com.watchtogether.action.START_STREAMING"
         const val ACTION_STOP = "com.watchtogether.action.STOP_STREAMING"
