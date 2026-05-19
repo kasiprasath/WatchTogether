@@ -136,7 +136,9 @@ class LobbyActivity : AppCompatActivity() {
                 resetToWaiting()
             }
             is SyncMessage.RoleSwapRequest -> {
-                showRoleSwapDialog(message.requesterName)
+                if (isHost) {
+                    showRoleSwapDialog(message.requesterName)
+                }
             }
             is SyncMessage.RoleSwapResponse -> {
                 handleRoleSwapResponse(message.accepted)

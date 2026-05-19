@@ -34,7 +34,7 @@
     <string name="lobby_role_swap_title">Role Swap Request</string>
     <string name="lobby_role_swap_message">%s wants to become the Host. Do you accept?</string>
     <string name="lobby_role_swap_sent">Role swap request sent\u2026</string>
-    <string name="lobby_role_swap_accepted">Role swap accepted! You are now the Viewer.</string>
+    <string name="lobby_role_swap_accepted">Role swap accepted! You are now the Host.</string>
     <string name="lobby_role_swap_rejected">Role swap request was declined.</string>
     <string name="lobby_host_selecting">Host is selecting a video\u2026</string>
 
