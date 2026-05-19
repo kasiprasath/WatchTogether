@@ -255,10 +255,8 @@ class SyncClient {
     }
 
     fun disconnect() {
-        shouldReconnect = false
-        _isConnected.value = false
-        // Send on a background thread to avoid NetworkOnMainThreadException
-        // when called from Activity.onDestroy() on the main thread
+        // Send disconnect before signalling the reader loop to exit,
+        // otherwise the reader's finally block may close the socket first
         try {
             val sendThread = Thread { sendMessageBlocking(SyncMessage.Disconnect) }
             sendThread.start()
@@ -266,6 +264,8 @@ class SyncClient {
         } catch (e: Exception) {
             AppLogger.w(LogTag.SOCKET, "Failed to send disconnect message", e)
         }
+        shouldReconnect = false
+        _isConnected.value = false
         cleanup()
     }
 

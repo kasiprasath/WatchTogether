@@ -543,10 +543,13 @@ class PlayerActivity : AppCompatActivity() {
                     }
                     is SyncMessage.Heartbeat -> { /* Keep-alive */ }
                     is SyncMessage.Disconnect -> {
-                        AppLogger.i(LogTag.PLAYER_SYNC, "Remote device disconnected")
-                        debugOverlayInfo("Remote disconnected — returning to home")
-                        finish()
-                        return@runOnUiThread
+                        if (!isHost) {
+                            AppLogger.i(LogTag.PLAYER_SYNC, "Host disconnected — returning to home")
+                            debugOverlayInfo("Host disconnected — returning to home")
+                            finish()
+                            return@runOnUiThread
+                        }
+                        AppLogger.d(LogTag.PLAYER_SYNC, "Viewer disconnected (host stays active)")
                     }
                 }
                 // Delay resetting isSyncing so ExoPlayer listener callbacks
