@@ -44,7 +44,7 @@ class LobbyActivity : AppCompatActivity() {
     private var preBufferPlayer: ExoPlayer? = null
     private var streamProxy: StreamProxy? = null
     private var proxyPort: Int = 0
-    private var preBufferedBytes: Long = 0
+    private var preBufferedMs: Long = 0
 
     override fun onCreate(savedInstanceState: Bundle?) {
         super.onCreate(savedInstanceState)
@@ -180,9 +180,8 @@ class LobbyActivity : AppCompatActivity() {
                 secondsLeft--
                 if (secondsLeft > 0) {
                     binding.countdownNumber.text = secondsLeft.toString()
-                    val bufferedKb = preBufferedBytes / 1024
                     binding.countdownLabel.text = getString(R.string.lobby_starting_in, secondsLeft)
-                    AppLogger.d(LogTag.STREAM_SERVER, "Buffer countdown: ${secondsLeft}s, buffered=${bufferedKb}KB")
+                    AppLogger.d(LogTag.STREAM_SERVER, "Buffer countdown: ${secondsLeft}s, buffered=${preBufferedMs}ms")
                     mainHandler.postDelayed(this, 1000)
                 } else {
                     stopPreBuffering()
@@ -223,8 +222,8 @@ class LobbyActivity : AppCompatActivity() {
                                     AppLogger.d(LogTag.STREAM_SERVER, "Pre-buffer: loading video data...")
                                 }
                                 Player.STATE_READY -> {
-                                    preBufferedBytes = bufferedPosition
-                                    AppLogger.i(LogTag.STREAM_SERVER, "Pre-buffer: ready, buffered=${preBufferedBytes / 1024}KB")
+                                    preBufferedMs = bufferedPosition
+                                    AppLogger.i(LogTag.STREAM_SERVER, "Pre-buffer: ready, buffered=${preBufferedMs}ms")
                                 }
                                 else -> {}
                             }
@@ -238,8 +237,8 @@ class LobbyActivity : AppCompatActivity() {
 
     private fun stopPreBuffering() {
         preBufferPlayer?.let { p ->
-            preBufferedBytes = p.bufferedPosition
-            AppLogger.i(LogTag.STREAM_SERVER, "Pre-buffer stopped: buffered=${preBufferedBytes / 1024}KB")
+            preBufferedMs = p.bufferedPosition
+            AppLogger.i(LogTag.STREAM_SERVER, "Pre-buffer stopped: buffered=${preBufferedMs}ms")
             p.release()
         }
         preBufferPlayer = null

@@ -393,6 +393,20 @@ class PlayerActivity : AppCompatActivity() {
                             )
                             AppLogger.i(LogTag.PLAYER_SYNC, "Re-broadcast VideoSelected to new client")
                             debugOverlayInfo("Re-sent VideoSelected to new viewer")
+                            // Also broadcast current playback state so viewer that
+                            // reconnected after lobby-to-player transition isn't stuck paused
+                            player?.let { p ->
+                                if (!isCountdownActive) {
+                                    val pos = p.currentPosition
+                                    if (p.playWhenReady) {
+                                        streamingService?.broadcastSyncMessage(SyncMessage.Play(pos))
+                                        AppLogger.i(LogTag.PLAYER_SYNC, "Re-broadcast Play($pos) to new client")
+                                    } else {
+                                        streamingService?.broadcastSyncMessage(SyncMessage.Pause(pos))
+                                        AppLogger.i(LogTag.PLAYER_SYNC, "Re-broadcast Pause($pos) to new client")
+                                    }
+                                }
+                            }
                         }
                     }
                 } catch (e: Exception) {
