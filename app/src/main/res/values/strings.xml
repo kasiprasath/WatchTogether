@@ -37,6 +37,9 @@
     <string name="lobby_role_swap_accepted">Role swap accepted! You are now the Host.</string>
     <string name="lobby_role_swap_rejected">Role swap request was declined.</string>
     <string name="lobby_host_selecting">Host is selecting a video\u2026</string>
+    <string name="lobby_select_video">Select a Video</string>
+    <string name="lobby_host_ready">Select a video to start streaming</string>
+    <string name="lobby_viewers_connected">%d viewer(s) in lobby</string>
 
     <!-- Video Library -->
     <string name="video_library">Video Library</string>
