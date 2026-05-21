@@ -1,12 +1,17 @@
 package com.watchtogether.ui.lobby
 
+import android.content.ComponentName
+import android.content.Context
 import android.content.Intent
+import android.content.ServiceConnection
 import android.os.Bundle
 import android.os.Handler
+import android.os.IBinder
 import android.os.Looper
 import android.view.View
 import android.widget.Toast
 import androidx.appcompat.app.AppCompatActivity
+import androidx.lifecycle.lifecycleScope
 import androidx.media3.common.MediaItem
 import androidx.media3.common.Player
 import androidx.media3.exoplayer.ExoPlayer
@@ -20,7 +25,9 @@ import com.watchtogether.network.server.StreamProxy
 import com.watchtogether.network.server.VideoStreamServer
 import com.watchtogether.network.sync.SyncClient
 import com.watchtogether.network.sync.SyncServer
+import com.watchtogether.service.StreamingService
 import com.watchtogether.ui.discovery.DiscoveryActivity
+import com.watchtogether.ui.library.VideoLibraryActivity
 import com.watchtogether.ui.player.PlayerActivity
 import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.Dispatchers
@@ -46,6 +53,31 @@ class LobbyActivity : AppCompatActivity() {
     private var proxyPort: Int = 0
     private var preBufferedMs: Long = 0
 
+    // Host-side: StreamingService binding
+    private var streamingService: StreamingService? = null
+    private var isBound = false
+
+    private val serviceConnection = object : ServiceConnection {
+        override fun onServiceConnected(name: ComponentName?, service: IBinder?) {
+            try {
+                val binder = service as StreamingService.StreamingBinder
+                streamingService = binder.getService()
+                isBound = true
+                AppLogger.i(LogTag.STREAM_SERVER, "Host lobby: service bound")
+                observeHostMessages()
+            } catch (e: Exception) {
+                AppLogger.e(LogTag.STREAM_SERVER, "Host lobby: service bind failed", e)
+                Toast.makeText(this@LobbyActivity, "Service connection failed", Toast.LENGTH_SHORT).show()
+            }
+        }
+
+        override fun onServiceDisconnected(name: ComponentName?) {
+            streamingService = null
+            isBound = false
+            AppLogger.w(LogTag.STREAM_SERVER, "Host lobby: service disconnected")
+        }
+    }
+
     override fun onCreate(savedInstanceState: Bundle?) {
         super.onCreate(savedInstanceState)
         binding = ActivityLobbyBinding.inflate(layoutInflater)
@@ -57,7 +89,12 @@ class LobbyActivity : AppCompatActivity() {
         AppLogger.i(LogTag.UI, "LobbyActivity started: isHost=$isHost, host=$hostAddress")
 
         setupUI()
-        connectToHost()
+
+        if (isHost) {
+            startHostService()
+        } else {
+            connectToHost()
+        }
     }
 
     private fun setupUI() {
@@ -69,24 +106,87 @@ class LobbyActivity : AppCompatActivity() {
             getString(R.string.role_viewer)
         }
 
-        binding.statusText.text = if (isHost) {
-            getString(R.string.lobby_host_selecting)
+        if (isHost) {
+            binding.statusText.text = getString(R.string.lobby_host_ready)
+            binding.btnRequestHost.text = getString(R.string.lobby_select_video)
+            binding.btnRequestHost.setIconResource(R.drawable.ic_stream)
+            binding.btnRequestHost.visibility = View.VISIBLE
+            binding.btnRequestHost.setOnClickListener {
+                navigateToVideoLibrary()
+            }
+            // Hide the spinner for host — they're not waiting
+            binding.progressWaiting.visibility = View.GONE
         } else {
-            getString(R.string.lobby_waiting_for_host)
+            binding.statusText.text = getString(R.string.lobby_waiting_for_host)
+            binding.btnRequestHost.text = getString(R.string.lobby_become_host)
+            binding.btnRequestHost.visibility = View.VISIBLE
+            binding.btnRequestHost.setOnClickListener {
+                requestRoleSwap()
+            }
         }
-
-        binding.btnRequestHost.setOnClickListener {
-            requestRoleSwap()
-        }
-
-        // Only viewers can request to become host
-        binding.btnRequestHost.visibility = if (isHost) View.GONE else View.VISIBLE
 
         binding.btnDisconnect.setOnClickListener {
             AppLogger.d(LogTag.UI, "User disconnected from lobby")
             finish()
         }
     }
+
+    // ---- Host-side: StreamingService management ----
+
+    private fun startHostService() {
+        try {
+            val intent = Intent(this, StreamingService::class.java).apply {
+                action = StreamingService.ACTION_START
+            }
+            startService(intent)
+            bindService(intent, serviceConnection, Context.BIND_AUTO_CREATE)
+            AppLogger.i(LogTag.STREAM_SERVER, "Host lobby: starting streaming service")
+        } catch (e: Exception) {
+            AppLogger.e(LogTag.STREAM_SERVER, "Host lobby: failed to start service", e)
+            Toast.makeText(this, "Failed to start streaming service", Toast.LENGTH_SHORT).show()
+        }
+    }
+
+    private fun observeHostMessages() {
+        lifecycleScope.launch {
+            try {
+                streamingService?.incomingMessages?.collectLatest { message ->
+                    handleSyncMessage(message)
+                }
+            } catch (e: Exception) {
+                AppLogger.e(LogTag.SOCKET, "Host lobby: error collecting messages", e)
+            }
+        }
+
+        lifecycleScope.launch {
+            try {
+                streamingService?.clientConnected?.collectLatest { _ ->
+                    runOnUiThread {
+                        val count = streamingService?.syncClientCount ?: 0
+                        binding.connectionInfo.text = if (count > 0) {
+                            getString(R.string.lobby_viewers_connected, count)
+                        } else {
+                            getString(R.string.waiting_for_viewers)
+                        }
+                    }
+                }
+            } catch (e: Exception) {
+                AppLogger.e(LogTag.SOCKET, "Host lobby: error collecting client events", e)
+            }
+        }
+    }
+
+    private fun navigateToVideoLibrary() {
+        val intent = Intent(this, VideoLibraryActivity::class.java).apply {
+            putExtra(DiscoveryActivity.EXTRA_IS_HOST, true)
+            putExtra(DiscoveryActivity.EXTRA_HOST_ADDRESS, hostAddress)
+        }
+        startActivity(intent)
+        AppLogger.i(LogTag.UI, "Host navigating to video library from lobby")
+        finish()
+    }
+
+    // ---- Viewer-side: SyncClient connection ----
 
     private fun connectToHost() {
         val address = hostAddress
@@ -126,33 +226,46 @@ class LobbyActivity : AppCompatActivity() {
         }
     }
 
+    // ---- Shared message handling ----
+
     private fun handleSyncMessage(message: SyncMessage) {
         when (message) {
             is SyncMessage.VideoSelected -> {
-                if (!hasNavigatedToPlayer) {
+                if (!isHost && !hasNavigatedToPlayer) {
                     AppLogger.i(LogTag.PLAYER_SYNC, "Host selected video: ${message.videoTitle}")
                     startBufferCountdown(message)
                 }
             }
             is SyncMessage.BufferCountdown -> {
-                showCountdown(message.secondsRemaining)
+                if (!isHost) {
+                    showCountdown(message.secondsRemaining)
+                }
             }
             is SyncMessage.Disconnect -> {
-                AppLogger.i(LogTag.PLAYER_SYNC, "Host disconnected from lobby")
-                Toast.makeText(this, "Host disconnected", Toast.LENGTH_SHORT).show()
-                finish()
+                if (!isHost) {
+                    AppLogger.i(LogTag.PLAYER_SYNC, "Host disconnected from lobby")
+                    Toast.makeText(this, "Host disconnected", Toast.LENGTH_SHORT).show()
+                    finish()
+                }
             }
             is SyncMessage.ReturnToLobby -> {
-                AppLogger.i(LogTag.PLAYER_SYNC, "Returned to lobby — host is selecting new video")
-                resetToWaiting()
+                if (!isHost) {
+                    AppLogger.i(LogTag.PLAYER_SYNC, "Returned to lobby — host is selecting new video")
+                    resetToWaiting()
+                }
             }
             is SyncMessage.RoleSwapRequest -> {
                 if (isHost) {
-                    showRoleSwapDialog(message.requesterName)
+                    AppLogger.i(LogTag.UI, "Role swap request received from ${message.requesterName}")
+                    runOnUiThread {
+                        showRoleSwapDialog(message.requesterName)
+                    }
                 }
             }
             is SyncMessage.RoleSwapResponse -> {
-                handleRoleSwapResponse(message.accepted)
+                if (!isHost) {
+                    handleRoleSwapResponse(message.accepted)
+                }
             }
             is SyncMessage.Heartbeat -> { /* Keep-alive */ }
             else -> {
@@ -160,6 +273,8 @@ class LobbyActivity : AppCompatActivity() {
             }
         }
     }
+
+    // ---- Viewer countdown and pre-buffering ----
 
     private fun startBufferCountdown(videoMessage: SyncMessage.VideoSelected) {
         binding.waitingState.visibility = View.GONE
@@ -242,8 +357,6 @@ class LobbyActivity : AppCompatActivity() {
             p.release()
         }
         preBufferPlayer = null
-        // Don't stop streamProxy here — PlayerActivity will create its own
-        // (proxy is bound to specific port, would conflict)
         streamProxy?.stop()
         streamProxy = null
     }
@@ -291,6 +404,8 @@ class LobbyActivity : AppCompatActivity() {
         binding.statusText.text = getString(R.string.lobby_waiting_for_host)
     }
 
+    // ---- Role swap ----
+
     private fun requestRoleSwap() {
         val deviceName = android.os.Build.MODEL
         syncClient?.sendMessage(SyncMessage.RoleSwapRequest(deviceName))
@@ -311,16 +426,33 @@ class LobbyActivity : AppCompatActivity() {
             .setTitle(R.string.lobby_role_swap_title)
             .setMessage(getString(R.string.lobby_role_swap_message, requesterName))
             .setPositiveButton(android.R.string.ok) { _, _ ->
-                syncClient?.sendMessage(SyncMessage.RoleSwapResponse(accepted = true))
+                // Send response via the appropriate channel
+                if (isBound) {
+                    streamingService?.broadcastSyncMessage(SyncMessage.RoleSwapResponse(accepted = true))
+                } else {
+                    syncClient?.sendMessage(SyncMessage.RoleSwapResponse(accepted = true))
+                }
                 AppLogger.i(LogTag.UI, "Role swap accepted for $requesterName")
                 // Swap: this device becomes viewer
                 isHost = false
                 binding.roleText.text = getString(R.string.role_viewer)
+                binding.btnRequestHost.text = getString(R.string.lobby_become_host)
                 binding.btnRequestHost.visibility = View.VISIBLE
+                binding.btnRequestHost.setOnClickListener { requestRoleSwap() }
                 binding.statusText.text = getString(R.string.lobby_waiting_for_host)
+                binding.progressWaiting.visibility = View.VISIBLE
+
+                // Unbind from StreamingService — viewer uses SyncClient
+                unbindHostService()
+                // Connect as viewer
+                connectToHost()
             }
             .setNegativeButton(android.R.string.cancel) { _, _ ->
-                syncClient?.sendMessage(SyncMessage.RoleSwapResponse(accepted = false))
+                if (isBound) {
+                    streamingService?.broadcastSyncMessage(SyncMessage.RoleSwapResponse(accepted = false))
+                } else {
+                    syncClient?.sendMessage(SyncMessage.RoleSwapResponse(accepted = false))
+                }
                 AppLogger.i(LogTag.UI, "Role swap rejected for $requesterName")
             }
             .setCancelable(false)
@@ -340,7 +472,7 @@ class LobbyActivity : AppCompatActivity() {
             // Navigate to video library to select a video
             syncClient?.disconnect()
             syncClient = null
-            val intent = Intent(this, com.watchtogether.ui.library.VideoLibraryActivity::class.java).apply {
+            val intent = Intent(this, VideoLibraryActivity::class.java).apply {
                 putExtra(DiscoveryActivity.EXTRA_IS_HOST, true)
                 putExtra(DiscoveryActivity.EXTRA_HOST_ADDRESS, hostAddress)
             }
@@ -353,12 +485,28 @@ class LobbyActivity : AppCompatActivity() {
         }
     }
 
+    // ---- Cleanup ----
+
+    private fun unbindHostService() {
+        if (isBound) {
+            try {
+                unbindService(serviceConnection)
+            } catch (e: Exception) {
+                AppLogger.w(LogTag.STREAM_SERVER, "Error unbinding host service", e)
+            }
+            isBound = false
+            streamingService = null
+        }
+    }
+
     override fun onDestroy() {
         countdownRunnable?.let { mainHandler.removeCallbacks(it) }
         mainHandler.removeCallbacksAndMessages(null)
         stopPreBuffering()
         syncClient?.disconnect()
         syncClient = null
+        // Unbind but don't stop the StreamingService — it stays alive for viewers
+        unbindHostService()
         scope.cancel()
         super.onDestroy()
         AppLogger.d(LogTag.UI, "LobbyActivity destroyed")
