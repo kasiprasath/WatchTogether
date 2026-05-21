@@ -33,6 +33,7 @@ import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.SupervisorJob
 import kotlinx.coroutines.cancel
+import kotlinx.coroutines.Job
 import kotlinx.coroutines.flow.collectLatest
 import kotlinx.coroutines.launch
 
@@ -56,6 +57,8 @@ class LobbyActivity : AppCompatActivity() {
     // Host-side: StreamingService binding
     private var streamingService: StreamingService? = null
     private var isBound = false
+    private var hostMessageJob: Job? = null
+    private var hostClientEventJob: Job? = null
 
     private val serviceConnection = object : ServiceConnection {
         override fun onServiceConnected(name: ComponentName?, service: IBinder?) {
@@ -148,7 +151,7 @@ class LobbyActivity : AppCompatActivity() {
     }
 
     private fun observeHostMessages() {
-        lifecycleScope.launch {
+        hostMessageJob = lifecycleScope.launch {
             try {
                 streamingService?.incomingMessages?.collectLatest { message ->
                     handleSyncMessage(message)
@@ -158,7 +161,7 @@ class LobbyActivity : AppCompatActivity() {
             }
         }
 
-        lifecycleScope.launch {
+        hostClientEventJob = lifecycleScope.launch {
             try {
                 streamingService?.clientConnected?.collectLatest { _ ->
                     runOnUiThread {
@@ -183,7 +186,16 @@ class LobbyActivity : AppCompatActivity() {
         }
         startActivity(intent)
         AppLogger.i(LogTag.UI, "Host navigating to video library from lobby")
-        finish()
+        // Don't finish() — keep LobbyActivity in back stack so it can stop
+        // the StreamingService if the user backs out of VideoLibraryActivity
+    }
+
+    private fun cancelHostObservers() {
+        hostMessageJob?.cancel()
+        hostMessageJob = null
+        hostClientEventJob?.cancel()
+        hostClientEventJob = null
+        AppLogger.d(LogTag.SOCKET, "Host lobby: cancelled message observers")
     }
 
     // ---- Viewer-side: SyncClient connection ----
@@ -442,6 +454,8 @@ class LobbyActivity : AppCompatActivity() {
                 binding.statusText.text = getString(R.string.lobby_waiting_for_host)
                 binding.progressWaiting.visibility = View.VISIBLE
 
+                // Cancel host message observers before transitioning to viewer
+                cancelHostObservers()
                 // Unbind from StreamingService — viewer uses SyncClient
                 unbindHostService()
                 // Connect as viewer
@@ -503,9 +517,21 @@ class LobbyActivity : AppCompatActivity() {
         countdownRunnable?.let { mainHandler.removeCallbacks(it) }
         mainHandler.removeCallbacksAndMessages(null)
         stopPreBuffering()
+        cancelHostObservers()
         syncClient?.disconnect()
         syncClient = null
-        // Unbind but don't stop the StreamingService — it stays alive for viewers
+        // Stop StreamingService if host is leaving (user backed out of lobby)
+        // but only if we started it (isHost was true on creation)
+        if (isHost && isBound) {
+            try {
+                val stopIntent = Intent(this, StreamingService::class.java).apply {
+                    action = StreamingService.ACTION_STOP
+                }
+                startService(stopIntent)
+            } catch (e: Exception) {
+                AppLogger.w(LogTag.STREAM_SERVER, "Error stopping service on lobby destroy", e)
+            }
+        }
         unbindHostService()
         scope.cancel()
         super.onDestroy()
