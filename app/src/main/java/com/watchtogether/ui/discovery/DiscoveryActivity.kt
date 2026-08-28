@@ -242,7 +242,7 @@ class DiscoveryActivity : AppCompatActivity() {
                 is WifiDirectManager.ConnectionState.ConnectedAsClient -> state.hostAddress
                 else -> null
             }
-            navigateToLibrary(isHost = true, hostAddress = address)
+            navigateToHostLobby(hostAddress = address)
         } else {
             Toast.makeText(this, getString(R.string.no_device_connected), Toast.LENGTH_SHORT).show()
         }
@@ -259,6 +259,14 @@ class DiscoveryActivity : AppCompatActivity() {
     private fun navigateToLibrary(isHost: Boolean, hostAddress: String?) {
         val intent = Intent(this, VideoLibraryActivity::class.java).apply {
             putExtra(EXTRA_IS_HOST, isHost)
+            putExtra(EXTRA_HOST_ADDRESS, hostAddress)
+        }
+        startActivity(intent)
+    }
+
+    private fun navigateToHostLobby(hostAddress: String?) {
+        val intent = Intent(this, LobbyActivity::class.java).apply {
+            putExtra(EXTRA_IS_HOST, true)
             putExtra(EXTRA_HOST_ADDRESS, hostAddress)
         }
         startActivity(intent)
