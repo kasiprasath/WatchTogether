@@ -6,6 +6,14 @@ import fi.iki.elonen.NanoHTTPD
 import java.io.File
 import java.io.FileInputStream
 import java.io.IOException
+import java.io.InputStream
+import java.io.RandomAccessFile
+import java.nio.channels.Channels
+
+sealed class RangeResult {
+    data class Satisfiable(val start: Long, val end: Long) : RangeResult()
+    object Unsatisfiable : RangeResult()
+}
 
 class VideoStreamServer(port: Int = DEFAULT_PORT) : NanoHTTPD(port) {
 
@@ -118,29 +126,31 @@ class VideoStreamServer(port: Int = DEFAULT_PORT) : NanoHTTPD(port) {
         rangeHeader: String
     ): Response {
         return try {
-            val rangeValue = rangeHeader.replace("bytes=", "").trim()
-            val parts = rangeValue.split("-")
-            val start = parts[0].toLongOrNull() ?: 0L
-            val end = if (parts.size > 1 && parts[1].isNotEmpty()) {
-                parts[1].toLongOrNull() ?: (fileLength - 1)
-            } else {
-                minOf(start + CHUNK_SIZE - 1, fileLength - 1)
+            when (val range = parseRange(rangeHeader, fileLength)) {
+                RangeResult.Unsatisfiable -> {
+                    AppLogger.w(LogTag.STREAM_SERVER, "Unsatisfiable video range: $rangeHeader")
+                    newFixedLengthResponse(
+                        Response.Status.RANGE_NOT_SATISFIABLE,
+                        MIME_PLAINTEXT,
+                        ""
+                    ).also {
+                        it.addHeader("Content-Range", "bytes */$fileLength")
+                    }
+                }
+                is RangeResult.Satisfiable -> {
+                    val contentLength = range.end - range.start + 1
+                    val response = newFixedLengthResponse(
+                        Response.Status.PARTIAL_CONTENT,
+                        mimeType,
+                        openRangeStream(file, range.start),
+                        contentLength
+                    )
+                    response.addHeader("Accept-Ranges", "bytes")
+                    response.addHeader("Content-Range", "bytes ${range.start}-${range.end}/$fileLength")
+                    response.addHeader("Content-Length", contentLength.toString())
+                    response
+                }
             }
-
-            val contentLength = end - start + 1
-            val fis = FileInputStream(file)
-            fis.skip(start)
-
-            val response = newFixedLengthResponse(
-                Response.Status.PARTIAL_CONTENT,
-                mimeType,
-                fis,
-                contentLength
-            )
-            response.addHeader("Accept-Ranges", "bytes")
-            response.addHeader("Content-Range", "bytes $start-$end/$fileLength")
-            response.addHeader("Content-Length", contentLength.toString())
-            response
         } catch (e: Exception) {
             AppLogger.e(LogTag.STREAM_SERVER, "Error serving partial content", e)
             newFixedLengthResponse(
@@ -173,7 +183,29 @@ class VideoStreamServer(port: Int = DEFAULT_PORT) : NanoHTTPD(port) {
 
     companion object {
         const val DEFAULT_PORT = 8080
-        private const val CHUNK_SIZE = 2 * 1024 * 1024L // 2MB chunks
+        internal const val CHUNK_SIZE = 2 * 1024 * 1024L
         private const val SOCKET_READ_TIMEOUT = 30000
+
+        internal fun parseRange(rangeHeader: String, fileLength: Long): RangeResult {
+            val rangeValue = rangeHeader.replace("bytes=", "").trim()
+            val parts = rangeValue.split("-")
+            val start = parts[0].toLongOrNull() ?: 0L
+            var end = if (parts.size > 1 && parts[1].isNotEmpty()) {
+                parts[1].toLongOrNull() ?: (fileLength - 1)
+            } else {
+                minOf(start + CHUNK_SIZE - 1, fileLength - 1)
+            }
+            end = minOf(end, fileLength - 1)
+            if (start < 0 || start >= fileLength || start > end) {
+                return RangeResult.Unsatisfiable
+            }
+            return RangeResult.Satisfiable(start, end)
+        }
+
+        internal fun openRangeStream(file: File, start: Long): InputStream {
+            val raf = RandomAccessFile(file, "r")
+            raf.seek(start)
+            return Channels.newInputStream(raf.channel)
+        }
     }
 }
