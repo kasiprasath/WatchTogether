@@ -17,6 +17,14 @@ import kotlinx.coroutines.launch
 import java.io.InputStream
 import java.net.Socket
 
+internal sealed class WsFrame {
+    data class Text(val text: String) : WsFrame()
+    data class Ping(val payload: ByteArray) : WsFrame()
+    object Pong : WsFrame()
+    object Close : WsFrame()
+    data class Other(val opcode: Int) : WsFrame()
+}
+
 class SyncClient {
 
     private var socket: Socket? = null
@@ -80,11 +88,21 @@ class SyncClient {
                 // Read loop for WebSocket frames
                 while (_isConnected.value) {
                     try {
-                        val frame = readWebSocketFrame(inputStream)
-                        if (frame != null) {
-                            val syncMessage = SyncMessage.fromJson(frame)
-                            if (syncMessage != null) {
-                                _incomingMessages.emit(syncMessage)
+                        when (val frame = readWebSocketFrame(inputStream)) {
+                            null, WsFrame.Close -> {
+                                AppLogger.d(LogTag.SOCKET, "Server closed connection")
+                                break
+                            }
+                            is WsFrame.Text -> SyncMessage.fromJson(frame.text)?.let {
+                                _incomingMessages.emit(it)
+                            }
+                            is WsFrame.Ping -> sendPong(frame.payload)
+                            WsFrame.Pong -> {}
+                            is WsFrame.Other -> {
+                                AppLogger.w(
+                                    LogTag.SOCKET,
+                                    "Ignoring unexpected opcode ${frame.opcode}"
+                                )
                             }
                         }
                     } catch (e: Exception) {
@@ -130,52 +148,6 @@ class SyncClient {
         }
     }
 
-    private fun readWebSocketFrame(input: InputStream): String? {
-        val firstByte = input.read()
-        if (firstByte == -1) return null
-
-        val secondByte = input.read()
-        if (secondByte == -1) return null
-
-        val isMasked = (secondByte and 0x80) != 0
-        var payloadLength = (secondByte and 0x7F).toLong()
-
-        when {
-            payloadLength == 126L -> {
-                val b1 = input.read()
-                val b2 = input.read()
-                payloadLength = ((b1 shl 8) or b2).toLong()
-            }
-            payloadLength == 127L -> {
-                var len = 0L
-                for (i in 0 until 8) {
-                    len = (len shl 8) or input.read().toLong()
-                }
-                payloadLength = len
-            }
-        }
-
-        val mask = if (isMasked) {
-            ByteArray(4).also { input.read(it) }
-        } else null
-
-        val payload = ByteArray(payloadLength.toInt())
-        var read = 0
-        while (read < payloadLength) {
-            val r = input.read(payload, read, (payloadLength - read).toInt())
-            if (r == -1) return null
-            read += r
-        }
-
-        if (mask != null) {
-            for (i in payload.indices) {
-                payload[i] = (payload[i].toInt() xor mask[i % 4].toInt()).toByte()
-            }
-        }
-
-        return String(payload, Charsets.UTF_8)
-    }
-
     fun sendMessage(message: SyncMessage) {
         scope.launch {
             sendMessageBlocking(message)
@@ -196,7 +168,18 @@ class SyncClient {
         }
     }
 
-    private fun createWebSocketFrame(payload: ByteArray): ByteArray {
+    private fun sendPong(payload: ByteArray) {
+        try {
+            socket?.getOutputStream()?.let { os ->
+                os.write(createWebSocketFrame(payload, 0xA))
+                os.flush()
+            }
+        } catch (e: Exception) {
+            AppLogger.e(LogTag.SOCKET, "FLOW BREAK: Failed to send pong", e)
+        }
+    }
+
+    private fun createWebSocketFrame(payload: ByteArray, opcode: Int = 0x1): ByteArray {
         val mask = ByteArray(4).also { java.security.SecureRandom().nextBytes(it) }
         val frame: ByteArray
 
@@ -204,7 +187,7 @@ class SyncClient {
         frame = when {
             len < 126 -> {
                 val f = ByteArray(6 + len)
-                f[0] = 0x81.toByte() // FIN + text
+                f[0] = (0x80 or opcode).toByte()
                 f[1] = (0x80 or len).toByte() // masked + length
                 System.arraycopy(mask, 0, f, 2, 4)
                 for (i in payload.indices) {
@@ -214,7 +197,7 @@ class SyncClient {
             }
             len < 65536 -> {
                 val f = ByteArray(8 + len)
-                f[0] = 0x81.toByte()
+                f[0] = (0x80 or opcode).toByte()
                 f[1] = (0x80 or 126).toByte()
                 f[2] = (len shr 8).toByte()
                 f[3] = (len and 0xFF).toByte()
@@ -226,7 +209,7 @@ class SyncClient {
             }
             else -> {
                 val f = ByteArray(14 + len)
-                f[0] = 0x81.toByte()
+                f[0] = (0x80 or opcode).toByte()
                 f[1] = (0x80 or 127).toByte()
                 for (i in 0 until 8) {
                     f[2 + i] = (len.toLong() shr (56 - i * 8) and 0xFF).toByte()
@@ -284,5 +267,73 @@ class SyncClient {
         private const val RECONNECT_DELAY = 2000L
         private const val MAX_RECONNECT_ATTEMPTS = 5
         private const val DISCONNECT_SEND_TIMEOUT_MS = 100L
+
+        internal fun readFully(input: InputStream, buf: ByteArray): Boolean {
+            var offset = 0
+            while (offset < buf.size) {
+                val count = input.read(buf, offset, buf.size - offset)
+                if (count == -1) return false
+                offset += count
+            }
+            return true
+        }
+
+        internal fun readWebSocketFrame(input: InputStream): WsFrame? {
+            val firstByte = input.read()
+            if (firstByte == -1) return null
+            val opcode = firstByte and 0x0F
+
+            val secondByte = input.read()
+            if (secondByte == -1) return null
+            val isMasked = (secondByte and 0x80) != 0
+            var payloadLength = (secondByte and 0x7F).toLong()
+
+            when (payloadLength) {
+                126L -> {
+                    val extendedLength = ByteArray(2)
+                    if (!readFully(input, extendedLength)) return null
+                    payloadLength = (
+                        ((extendedLength[0].toInt() and 0xFF) shl 8) or
+                            (extendedLength[1].toInt() and 0xFF)
+                        ).toLong()
+                }
+                127L -> {
+                    val extendedLength = ByteArray(8)
+                    if (!readFully(input, extendedLength)) return null
+                    payloadLength = 0L
+                    for (byte in extendedLength) {
+                        payloadLength = (payloadLength shl 8) or
+                                (byte.toInt() and 0xFF).toLong()
+                    }
+                    if (payloadLength < 0) return null
+                }
+            }
+
+            val mask = if (isMasked) {
+                ByteArray(4).also {
+                    if (!readFully(input, it)) return null
+                }
+            } else {
+                null
+            }
+            if (payloadLength > Int.MAX_VALUE) return null
+
+            val payload = ByteArray(payloadLength.toInt())
+            if (!readFully(input, payload)) return null
+
+            if (mask != null) {
+                for (i in payload.indices) {
+                    payload[i] = (payload[i].toInt() xor mask[i % 4].toInt()).toByte()
+                }
+            }
+
+            return when (opcode) {
+                0x1 -> WsFrame.Text(String(payload, Charsets.UTF_8))
+                0x8 -> WsFrame.Close
+                0x9 -> WsFrame.Ping(payload)
+                0xA -> WsFrame.Pong
+                else -> WsFrame.Other(opcode)
+            }
+        }
     }
 }
