@@ -48,6 +48,10 @@ android {
     testOptions {
         unitTests.isReturnDefaultValues = true
     }
+
+    packaging {
+        resources.excludes += setOf("META-INF/LICENSE.md", "META-INF/LICENSE-notice.md")
+    }
 }
 
 dependencies {

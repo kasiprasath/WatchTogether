@@ -64,8 +64,9 @@ class SyncClient {
                 val inputStream = tcpSocket.getInputStream()
 
                 // WebSocket handshake
-                val key = java.util.Base64.getEncoder().encodeToString(
-                    ByteArray(16).also { java.security.SecureRandom().nextBytes(it) }
+                val key = android.util.Base64.encodeToString(
+                    ByteArray(16).also { java.security.SecureRandom().nextBytes(it) },
+                    android.util.Base64.NO_WRAP
                 )
                 val handshake = "GET / HTTP/1.1\r\n" +
                         "Host: $hostAddress:$port\r\n" +
